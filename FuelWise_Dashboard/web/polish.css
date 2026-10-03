@@ -1,0 +1,651 @@
+:root {
+  --navy: #28323a;
+  --teal: #56636e;
+  --bg: #f2f3f4;
+  --line: #dce0e3;
+  --muted: #747e85;
+}
+
+body {
+  background: var(--bg);
+  color: #303940;
+}
+
+aside {
+  background: var(--navy);
+  box-shadow: 3px 0 12px #1c30380b;
+  padding: 28px 20px;
+}
+
+.brand {
+  letter-spacing: -0.7px;
+}
+
+.brand b {
+  background: #89939b;
+  box-shadow: none;
+}
+
+.status i {
+  background: #aab2b8;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 11px;
+  border: 1px solid #ffffff18;
+  border-radius: 2px;
+  background: #ffffff08;
+}
+
+nav button {
+  border-radius: 2px;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+nav button:hover {
+  background: #ffffff0a;
+  color: #f1f4f5;
+}
+
+nav button.active {
+  background: #3a454e;
+  box-shadow: inset 2px 0 #aab2b8;
+  color: #f0f2f3;
+}
+
+main {
+  padding: 34px clamp(22px, 3vw, 52px);
+}
+
+header {
+  min-height: 104px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #dce3e5;
+}
+
+header .eyebrow {
+  margin-bottom: 4px;
+  color: #68747c;
+}
+
+h1 {
+  color: #303a42;
+  letter-spacing: -0.5px;
+}
+
+.cards {
+  gap: 15px;
+}
+
+.card {
+  position: relative;
+  overflow: hidden;
+  border-color: #e1e6e8;
+  border-radius: 2px;
+  box-shadow: 0 1px 3px #1d343b08;
+  transition: border-color 0.15s ease;
+}
+
+.card::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: #87929a;
+  content: "";
+}
+
+.card:hover {
+  border-color: #cbd6d9;
+  box-shadow: 0 1px 3px #1d343b08;
+}
+
+.card strong {
+  color: #35414a;
+  font-size: clamp(21px, 1.7vw, 26px);
+}
+
+.panel {
+  border-color: #e1e6e8;
+  border-radius: 2px;
+  padding: clamp(18px, 2vw, 26px);
+  box-shadow: 0 1px 4px #1d343b08;
+}
+
+.panelhead {
+  align-items: flex-start;
+}
+
+.panel h2,
+.panel h3 {
+  color: #35414a;
+}
+
+select,
+input,
+button,
+.button {
+  border-radius: 2px;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+button,
+.button {
+  font-weight: 600;
+}
+
+button:not(:disabled):hover,
+.button:hover {
+  filter: brightness(0.96);
+  box-shadow: none;
+}
+
+.secondary:hover {
+  background: #f1f4f5;
+}
+
+#map {
+  border: 1px solid #dce1e4;
+}
+
+.chart,
+.chartgrid .chart {
+  border-radius: 2px;
+}
+
+.toolbar {
+  gap: 10px;
+}
+
+.tablewrap {
+  border: 1px solid #e3e8ea;
+  border-radius: 2px;
+}
+
+table {
+  white-space: nowrap;
+}
+
+th {
+  background: #eceff1;
+}
+
+td,
+th {
+  padding: 11px 14px;
+}
+
+tr:hover td {
+  background: #f0f2f3;
+}
+
+#loading {
+  border: 1px solid #dce0e3;
+  background: #e9ecee;
+  color: #4f5b63;
+}
+
+footer {
+  padding: 15px 2px 4px;
+  border-top: 1px solid #dce3e5;
+}
+
+@media (max-width: 1100px) {
+  main {
+    padding: 26px 22px;
+  }
+}
+
+@media (max-width: 700px) {
+  aside {
+    padding: 18px;
+    box-shadow: 0 2px 8px #1c30380c;
+  }
+
+  .brand span {
+    margin-bottom: 18px;
+  }
+
+  nav {
+    gap: 4px;
+  }
+
+  nav button {
+    margin: 2px 0;
+    padding: 9px 10px;
+  }
+
+  main {
+    padding: 22px 14px;
+  }
+
+  header {
+    min-height: 0;
+    padding-bottom: 16px;
+  }
+
+  header .button {
+    white-space: nowrap;
+  }
+
+  .cards {
+    gap: 10px;
+  }
+
+  .card {
+    padding: 14px;
+  }
+
+  .panel {
+    padding: 16px;
+  }
+
+  .tablewrap {
+    max-width: 100%;
+  }
+}
+
+.cards {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+}
+
+.cards > .card {
+  min-width: 0;
+  padding: 12px 20px 12px 0;
+  border: 0;
+  border-right: 1px solid #dfe5e7;
+  border-radius: 2px;
+  background: transparent;
+  box-shadow: none;
+  transition: color 0.18s ease;
+}
+
+.cards > .card:not(:nth-child(5n)) {
+  padding-right: 20px;
+}
+
+.cards > .card:nth-child(5n) {
+  border-right: 0;
+}
+
+.cards > .card span {
+  display: block;
+  color: #000;
+  font-size: 18px;
+  letter-spacing: 0.1px;
+}
+
+.cards > .card strong {
+  margin: 5px 0 3px;
+  color: #263f47;
+  font-size: clamp(23px, 1.9vw, 29px);
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.cards > .card strong small {
+  color: #687980;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.cards > .card > small {
+  display: block;
+  min-height: 1.6em;
+  color: #78878c;
+  font-size: 11px;
+}
+
+@media (max-width: 1100px) {
+  .cards {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .cards > .card {
+    padding: 12px 16px 12px 0;
+  }
+
+  .cards > .card:not(:nth-child(3n)) {
+    padding-right: 16px;
+  }
+
+  .cards > .card:nth-child(3n) {
+    border-right: 0;
+  }
+
+  .cards > .card:nth-child(n + 4) {
+    border-top: 1px solid #dfe5e7;
+    padding-top: 15px;
+  }
+}
+
+@media (max-width: 700px) {
+  .cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cards > .card {
+    padding: 12px 14px 12px 0;
+  }
+
+  .cards > .card:not(:nth-child(2n)) {
+    padding-right: 14px;
+  }
+
+  .cards > .card:nth-child(3n) {
+    border-right: 1px solid #dfe5e7;
+  }
+
+  .cards > .card:nth-child(2n) {
+    border-right: 0;
+  }
+
+  .cards > .card:nth-child(n + 3) {
+    border-top: 1px solid #dfe5e7;
+    padding-top: 14px;
+  }
+}
+
+.card,
+.panel {
+  border-radius: 2px;
+}
+
+select,
+input,
+button,
+.button,
+.status,
+nav button,
+.tablewrap,
+#map,
+#pointInfo p,
+.notice,
+.badge {
+  border-radius: 2px;
+}
+
+#fleetCards {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0;
+
+  margin: 20px 0 28px;
+  padding: 20px 0;
+  border: 0;
+  border-bottom: 1px solid #e7edef;
+  background: transparent;
+}
+
+#fleetCards > .card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 0;
+
+  min-width: 0;
+  margin: 0;
+  padding: 0 24px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+
+  color: #74818a;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+/* 淡分隔線，讓五組數據有清楚的邊界 */
+#fleetCards > .card + .card {
+  border-left: 1px solid #e7edef;
+}
+
+#fleetCards > .card:first-child {
+  padding-left: 0;
+}
+
+#fleetCards > .card:last-child {
+  padding-right: 0;
+}
+
+#fleetCards > .card::before,
+#fleetCards > .card::after {
+  display: none;
+}
+
+/* 第一個元素若是標題，統一其字級與顏色 */
+#fleetCards > .card > :first-child:not(strong) {
+  margin: 0;
+  color: #74818a;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.5;
+  letter-spacing: 0.03em;
+}
+
+/* 數字：縮小尺寸，以適中的字重建立層次 */
+#fleetCards > .card strong {
+  display: block;
+  margin: 12px 0 0;
+
+  color: #35414a;
+  font-size: clamp(26px, 2.1vw, 34px);
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: -0.035em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 單位保持低調 */
+#fleetCards > .card strong small {
+  margin-left: 4px;
+  color: #849198;
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+/* 補充說明 */
+#fleetCards > .card > small {
+  margin-top: 8px;
+  color: #8a959c;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+/* 最後一欄「整體油耗」作為主要指標 */
+#fleetCards > .card:last-child strong {
+  color: #00897f;
+}
+
+/* 平板：三欄 */
+@media (max-width: 1100px) {
+  #fleetCards {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    row-gap: 24px;
+  }
+
+  #fleetCards > .card:nth-child(3n + 1) {
+    padding-left: 0;
+    border-left: 0;
+  }
+}
+
+/* 手機：兩欄 */
+@media (max-width: 700px) {
+  #fleetCards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    row-gap: 24px;
+    padding: 16px 0;
+  }
+
+  #fleetCards > .card {
+    padding: 0 16px;
+  }
+
+  #fleetCards > .card:nth-child(n) {
+    border-left: 0;
+  }
+
+  #fleetCards > .card:nth-child(odd) {
+    padding-left: 0;
+  }
+
+  #fleetCards > .card:nth-child(even) {
+    border-left: 1px solid #e7edef;
+  }
+
+  #fleetCards > .card strong {
+    font-size: 28px;
+  }
+}
+
+button,
+.button {
+  background-color: #56636e;
+}
+
+.secondary {
+  color: #56636e;
+}
+
+#download {
+  border-color: #56636e;
+  background: #56636e;
+  color: #f4f6f7;
+}
+
+#download:hover {
+  background: #64717b;
+  color: #fff;
+}
+
+#pointInfo p,
+#qualityInfo p,
+.notice,
+th {
+  background-color: #eceff1;
+}
+
+.legend .green {
+  background-color: #7d8b95;
+}
+
+.cards > .card::before {
+  background-color: #87929a;
+}
+
+#cards {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 15px;
+}
+
+#cards > .card {
+  padding: 16px 18px;
+  border: 1px solid #dce0e3;
+  background: #fff;
+  box-shadow: 0 1px 3px #1d343b08;
+}
+
+#cards > .card::before {
+  display: none;
+}
+
+#cards > .card span {
+  color: #747e85;
+  font-size: 14px;
+}
+
+#cards > .card strong {
+  margin: 4px 0;
+  color: #35414a;
+  font-size: clamp(23px, 1.9vw, 29px);
+}
+
+#cards > .card > small {
+  color: #747e85;
+  font-size: 11px;
+}
+
+@media (max-width: 1100px) {
+  #cards {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+  }
+}
+
+@media (max-width: 700px) {
+  #cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  #cards > .card {
+    padding: 14px;
+  }
+}
+
+aside label {
+  color: #c1c8cd;
+}
+
+aside input,
+aside select {
+  background: #323d46;
+  border-color: #4b5861;
+  color: #edf0f2;
+}
+
+aside input:hover,
+aside select:hover {
+  border-color: #697680;
+  background: #37434c;
+}
+
+aside input:focus-visible,
+aside select:focus-visible {
+  outline: 2px solid #a0adb6;
+  outline-offset: 2px;
+}
+
+aside > button {
+  border-color: #687680;
+  background: #56636e;
+  color: #f4f6f7;
+}
+
+aside > button:hover {
+  background: #64717b;
+}
+
+nav button {
+  color: #c1c8cd;
+}
+
+nav button:hover {
+  background: #323d46;
+  color: #f0f2f3;
+}
+
+nav button.active {
+  background: #3c4851;
+  box-shadow: inset 3px 0 #aab4bb;
+  color: #fff;
+}

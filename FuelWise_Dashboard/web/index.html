@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>FuelWise｜車隊行程分析</title>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <link rel="stylesheet" href="/style.css">
+    <link rel="stylesheet" href="/polish.css">
+
+    <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script defer src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+    <script defer src="/app.js"></script>
+  </head>
+
+  <body>
+    <aside>
+      <div class="brand">
+        </b> FuelWise <br>
+        智能油耗領航員
+      </div>
+
+      <label>
+        車輛
+        <select id="vehicle"></select>
+      </label>
+
+      <div class="row">
+        <label>
+          起始日期
+          <input type="date" id="dateFrom">
+        </label>
+        <label>
+          結束日期
+          <input type="date" id="dateTo">
+        </label>
+      </div>
+
+      <label>
+        行程
+        <select id="journey"></select>
+      </label>
+
+      <button id="refresh">套用篩選</button>
+      <hr>
+
+      <p class="eyebrow">WORKSPACE</p>
+      <nav id="nav">
+        <button data-tab="overview">01　車隊總覽</button>
+        <button data-tab="trip" class="active">02　行程與地圖</button>
+        <button data-tab="signals">03　訊號分析</button>
+        <button data-tab="events">04　事件與停留</button>
+        <button data-tab="compare">05　相似任務比較</button>
+        <button data-tab="quality">06　資料品質與原始值</button>
+      </nav>
+
+      <div class="sidebottom">
+        LOCAL ANALYTICS<br>
+        <small id="source"></small>
+      </div>
+    </aside>
+
+    <main>
+      <header>
+        <div>
+          <p class="eyebrow">商用車營運分析工作台</p>
+          <h1 id="title">行程與地圖</h1>
+          <p id="subtitle">正在載入資料索引…</p>
+        </div>
+        <a class="button secondary" id="download" href="#">下載本趟 CSV ↗</a>
+      </header>
+
+      <div id="error" role="alert" hidden></div>
+      <div id="loading">正在載入…</div>
+      <div id="cards" class="cards"></div>
+
+      <section id="overview" class="tab" hidden>
+        <div class="panel">
+          <h2>車隊營運概況</h2>
+          <div id="fleetCards" class="cards"></div>
+          <div id="fleetChart" class="chart"></div>
+          <div class="toolbar">
+            <input id="fleetSearch" placeholder="搜尋車牌／納管碼／行程">
+            <span id="fleetCount"></span>
+          </div>
+          <div id="fleetTable" class="tablewrap"></div>
+          <div class="toolbar">
+            <button id="fleetPrev">上一頁</button>
+            <span id="fleetPage"></span>
+            <button id="fleetNext">下一頁</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="trip" class="tab">
+        <div class="split">
+          <div class="panel">
+            <div class="panelhead">
+              <div>
+                <h2>運輸路徑</h2>
+                <p class="muted">原始 GPS 軌跡 · 點選路段查看時間與訊號</p>
+              </div>
+              <select id="mapMetric">
+                <option value="speed">依車速著色</option>
+                <option value="rpm">依轉速著色</option>
+                <option value="load">依引擎負載著色</option>
+              </select>
+            </div>
+            <div id="map"></div>
+            <div class="legend">
+              <span class="dot green"></span>起點
+              <span class="dot red"></span>終點
+              <span class="dot amber"></span>停車引擎運轉
+              <span id="mapLegend">藍：低值 → 紅：高值</span>
+            </div>
+            <p class="muted small">
+              定位異常或間隔超過120秒的路段不連線，GPS折線未道路匹配。底圖 © OpenStreetMap contributors。
+            </p>
+          </div>
+
+          <div class="panel">
+            <p class="eyebrow">TRIP INSIGHTS</p>
+            <h2>本趟觀察</h2>
+            <div id="insights"></div>
+            <hr>
+            <h3>游標所在觀測點</h3>
+            <div id="pointInfo"></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="toolbar">
+            <button id="play">▶ 逐筆播放</button>
+            <input type="range" id="cursor" min="0" max="1" value="0">
+            <span id="cursorTime"></span>
+          </div>
+          <p class="muted small">
+            每次前進一筆觀測，不代表真實時間等速，圖表點選與時間游標可定位地圖。
+          </p>
+          <div class="toolbar">
+            <label>
+              區間起點（分）
+              <input id="windowStart" type="number" min="0" step="0.1" value="0">
+            </label>
+            <label>
+              區間終點（分）
+              <input id="windowEnd" type="number" min="0" step="0.1">
+            </label>
+            <button id="applyWindow">分析此區間</button>
+            <button class="secondary" id="resetWindow">全程</button>
+          </div>
+          <p id="windowSummary"></p>
+          <div id="timeline" class="chart tall"></div>
+        </div>
+      </section>
+
+      <section id="signals" class="tab" hidden>
+        <div class="panel">
+          <div class="panelhead">
+            <div>
+              <h2>引擎與行駛訊號</h2>
+              <p class="muted">
+                完整觀測值；滑鼠懸停可讀數值，框選可放大，點選可定位地圖。
+              </p>
+            </div>
+            <select id="xAxis">
+              <option value="sec">時間（分鐘）</option>
+              <option value="distance">本趟累積里程（km）</option>
+            </select>
+          </div>
+          <div id="signalCharts" class="chartgrid"></div>
+        </div>
+
+        <div class="split">
+          <div class="panel">
+            <h2>速度時間分布</h2>
+            <p class="muted">以取樣間隔加權，排除超過120秒空檔及未知車速。</p>
+            <div id="speedBands" class="chart"></div>
+          </div>
+          <div class="panel">
+            <h2>RPM × 引擎負載</h2>
+            <p class="muted">顏色代表車速；負載百分比不等同實際扭力。</p>
+            <div id="engineScatter" class="chart"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="events" class="tab" hidden>
+        <div class="panel">
+          <div class="panelhead">
+            <h2>事件時間軸</h2>
+            <select id="eventSource">
+              <option value="all">全部</option>
+              <option value="raw">平台原始事件</option>
+              <option value="derived">CAN 推估停留</option>
+            </select>
+          </div>
+          <p class="muted">
+            原始事件按內容去重。事件座標使用120秒內最近的觀測點，並非事件當下精確定位。點選列可跳到地圖。
+          </p>
+          <div id="eventTable" class="tablewrap"></div>
+        </div>
+
+        <div class="panel">
+          <h2>停車引擎運轉位置</h2>
+          <p class="muted">
+            CAN車速=0、RPM&gt;0，連續≥60秒；超過120秒的空檔會切斷。這不等於可避免的怠速。
+          </p>
+          <div id="stopTable" class="tablewrap"></div>
+        </div>
+      </section>
+
+      <section id="compare" class="tab" hidden>
+        <div class="panel">
+          <div class="panelhead">
+            <div>
+              <h2>相似運輸任務比較</h2>
+              <p class="muted">
+                同一車輛、同方向，起終點各距離本趟不超過指定半徑；不要求中間走法相同。套用側欄日期範圍。
+              </p>
+            </div>
+            <select id="odRadius">
+              <option value="200">OD半徑 200 m</option>
+              <option value="500">OD半徑 500 m</option>
+              <option value="1000">OD半徑 1 km</option>
+            </select>
+          </div>
+          <p id="peerNote"></p>
+          <div id="compareChart" class="chart"></div>
+          <div id="peerTable" class="tablewrap"></div>
+        </div>
+      </section>
+
+      <section id="quality" class="tab" hidden>
+        <div class="panel">
+          <h2>資料品質與計算口徑</h2>
+          <div id="qualityInfo"></div>
+          <details open>
+            <summary>指標怎麼算？</summary>
+            <ul>
+              <li>耗油＝本趟累積燃油末值−首值；距離＝累積里程末值−首值。計數器倒退或端點無效時顯示無法計算。</li>
+              <li>L/100km＝100×耗油÷距離。跨行程比較採相同有效行程的總耗油÷總里程。</li>
+              <li>時間比例以前一筆狀態持有至下一筆；超過120秒的空檔排除，最後一筆不向後延伸。分母為該指標可判讀的時間。</li>
+              <li>CAN狀態0正常、9異常，依原始欄位對照表。異常CAN不參與引擎與燃油指標；原值仍保留。</li>
+              <li>速度差分只估計≤30秒區間的平均加速度，不據此判定平台急加減速事件。</li>
+              <li>原始表電瓶為mV，圖表除以1000換算V。引擎負載有效範圍0–250%，不擅自截成100%。</li>
+              <li>限速為正且車速有效時才比較；比較結果是觀測超限時間，不是交通違規判定。</li>
+              <li>燃油階梯不能支持秒級流量或逐秒節油歸因。圖表連線僅為閱讀輔助。</li>
+              <li>資料沒有道路坡度、貨物重量與氣象；此版不輸出其推估值、因果節油量或AI預測。</li>
+            </ul>
+          </details>
+        </div>
+
+        <div class="panel">
+          <h2>原始紀錄</h2>
+          <p class="muted">每頁100筆，保留全部來源欄位。缺失與異常值不會在此隱藏。</p>
+          <div class="toolbar">
+            <button id="rawPrev">上一頁</button>
+            <span id="rawPage"></span>
+            <button id="rawNext">下一頁</button>
+          </div>
+          <div id="rawTable" class="tablewrap"></div>
+        </div>
+      </section>
+
+      <footer>FuelWise · 智能油耗領航員</footer>
+    </main>
+  </body>
+</html>
