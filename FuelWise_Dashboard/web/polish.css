@@ -259,6 +259,79 @@ footer {
   background: transparent;
 }
 
+.fuel-model-panel .fuel-model-cards {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 18px 0;
+}
+
+.fuel-model-panel .fuel-model-cards .card {
+  min-width: 0;
+  border: 1px solid #e1e6e8;
+  background: #fff;
+}
+
+.fuel-model-panel .fuel-model-cards .card strong {
+  font-size: clamp(18px, 1.5vw, 23px);
+  overflow-wrap: anywhere;
+}
+
+.fuel-model-chart-heading {
+  margin-top: 22px;
+}
+
+#fuelModelChart {
+  height: 390px;
+}
+
+.fuel-model-panel .tablewrap {
+  margin: 12px 0 20px;
+}
+
+.fuel-model-details {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.fuel-model-meta {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.7fr) 2fr;
+  gap: 8px 14px;
+  margin: 16px 0;
+}
+
+.fuel-model-meta dt {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.fuel-model-meta dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 900px) {
+  .fuel-model-panel .fuel-model-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .fuel-model-panel .fuel-model-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .fuel-model-meta {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .fuel-model-meta dd {
+    margin-bottom: 10px;
+  }
+}
+
 .cards > .card {
   min-width: 0;
   padding: 12px 20px 12px 0;

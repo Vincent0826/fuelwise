@@ -6,6 +6,12 @@ from pathlib import Path
 from urllib.parse import urlparse,parse_qs
 from analytics import analyze,clean
 from importer import prepare
+from analysis.fuel_model_inference import (
+    ModelUnavailableError,
+    TripInferenceError,
+    predict_trip,
+)
+from analysis.prepare_dashboard_model import prepare_dashboard_model
 BASE=Path(__file__).resolve().parent
 AI_SENSOR_FIELDS=('speed','rpm','load','temp','battery','fuel_level','distance','used')
 DEFAULT_GEMINI_MODEL='gemini-3.8-flash'
@@ -144,6 +150,13 @@ def main():
         meta=json.loads(c.execute('SELECT value FROM meta WHERE key="info"').fetchone()[0]);trips=[]
         for id_,s in c.execute('SELECT id,summary FROM trips'):
             s=json.loads(s);s['id']=id_;trips.append(s)
+    model_build_error=None
+    try:
+        _,model_created=prepare_dashboard_model(db,meta)
+        if model_created:print('行程油耗模型已建立，可於行程頁查看估計與解釋。',flush=True)
+    except (FileNotFoundError,OSError,ValueError,RuntimeError,KeyError,ImportError) as exc:
+        model_build_error=str(exc)
+        print(f'行程油耗模型建立失敗；網站其他功能仍可使用：{exc}',flush=True)
     @lru_cache(maxsize=12)
     def trip(id_):
         with connection() as c:
@@ -171,6 +184,15 @@ def main():
                 if url.path=='/api/catalog':data={'meta':meta,'trips':trips}
                 elif url.path=='/api/trip':
                     data=trip(int(q['id'][0]));data={k:v for k,v in data.items() if k!='raw'}
+                elif url.path=='/api/fuel-model':
+                    selected=trip(int(q['id'][0]))
+                    try:data=predict_trip(selected,selected['vehicle'],selected['journey'])
+                    except ModelUnavailableError as exc:
+                        reason=str(exc)
+                        if model_build_error:reason+=f'；本機自動訓練失敗：{model_build_error}'
+                        self.send_json({'available':False,'reason':reason},503);return
+                    except TripInferenceError as exc:
+                        self.send_json({'available':False,'reason':str(exc)},422);return
                 elif url.path=='/api/raw':
                     raw=trip(int(q['id'][0]))['raw'];page=max(0,int(q.get('page',['0'])[0]));data={'rows':raw[page*100:(page+1)*100],'total':len(raw)}
                 elif url.path=='/api/export':
