@@ -1,6 +1,47 @@
 # FuelWise｜商用車行程分析儀表板
 
-這是一個能讀取實際 Excel 的本機網站。Python 提供資料 API，HTML/CSS/JavaScript 呈現互動地圖與圖表。不需要 Node.js、API 金鑰或雲端資料庫。此版本是歷史資料監控與分析，尚未接即時車聯網、生成式AI或預測模型。
+這是一個能讀取實際 Excel 的本機網站。Python 提供資料 API，HTML/CSS/JavaScript 呈現互動地圖與圖表。不需要 Node.js 或雲端資料庫。AI 行程助理可選擇使用 Gemini API；其餘分析在本機執行。此版本使用歷史資料模擬監控，尚未接即時車聯網。
+
+## 專案結構與程式職責
+
+### 網站與資料處理
+
+| 檔案 | 職責 |
+| --- | --- |
+| `server.py` | 啟動本機 HTTP 服務、提供網站 API、載入行程與原始資料；選用的 Gemini 行程助理也由此轉送請求。 |
+| `importer.py` | 讀取 XLSX／XLS、挑選含行程欄位的工作表，建立供網站使用的本機 SQLite 索引。 |
+| `analytics.py` | 共用行程分析核心：清理資料、計算里程／燃油／訊號／事件與資料品質；網站及離線程式都會使用。 |
+| `web/index.html` | 定義網站頁面、導覽、篩選器、圖表、地圖及各分析頁籤的 HTML 結構。 |
+| `web/app.js` | 網站互動邏輯：車隊總覽、行程地圖、歷史資料模擬監控、AI 助理、訊號／事件／品質分析、歷史比較、游標播放及 CSV 下載。 |
+| `web/style.css` | 網站主要版面、元件及不同螢幕尺寸的基礎樣式。 |
+| `web/polish.css` | 在主要樣式之後載入的視覺細節與樣式微調層。 |
+
+### 獨立分析與模型
+
+| 檔案 | 職責 |
+| --- | --- |
+| `analysis/analyze_driving_fuel.py` | 獨立分析急加速／急減速事件與每趟油耗的關聯，輸出彙總、圖表及報告；不屬於網站啟動流程。 |
+| `analysis/train_fuel_model.py` | 離線建立行程層級油耗模型、特徵與時間切分評估；使用既有索引，不會重新匯入 Excel 或呼叫網站 API。 |
+
+### 測試
+
+| 檔案 | 職責 |
+| --- | --- |
+| `tests/test_analytics.py` | 驗證共用分析公式、資料品質、計數器及區間統計。 |
+| `tests/test_ai.py` | 驗證 AI 感測器資料匿名化、輸入限制及 Gemini 請求處理。 |
+| `tests/test_driving_fuel.py` | 驗證急加減速事件判定與離線油耗分析。 |
+| `tests/test_fuel_model.py` | 驗證模型特徵、資料切分與避免目標洩漏。 |
+
+### 啟動與專案輔助檔
+
+| 檔案 | 職責 |
+| --- | --- |
+| `start_windows.bat`、`start_mac_linux.sh` | 建立本機虛擬環境、安裝套件並啟動網站。 |
+| `requirements.txt` | 列出網站、Excel 匯入及離線分析所需的 Python 套件。 |
+| `VALIDATION.md` | 記錄既有匯入、API、頁面邏輯及程式檢查結果與限制。 |
+| `Data_Analysis.code-workspace` | VS Code 多資料夾工作區設定；包含 FuelWise 及相鄰的 `Data_Analysis` 資料夾。 |
+
+`data.xlsx`／`data.xls` 是本機來源資料；`.venv` 是套件環境；`.cache` 是可重建的 SQLite 索引；`analysis_output` 是離線分析與模型輸出。這些不是網站原始碼，但仍供本機工作流程使用，因此本次整理予以保留。`.cache` 的重建方式見「索引與更新」；其他資料或輸出如需清除，請先確認其用途。
 
 ## Windows 開始使用
 
@@ -19,6 +60,21 @@ python server.py
 
 Mac/Linux：`sh start_mac_linux.sh`。
 
+### 啟用 AI 行程助理（選用）
+
+AI 助理需要 Gemini API key。請在啟動伺服器前，於同一個終端機設定環境變數；不要將 key 貼進程式碼或提交到版本控制。
+
+Windows PowerShell：
+
+```powershell
+$env:GEMINI_API_KEY = "你的 Gemini API key"
+python server.py
+```
+
+預設使用 `gemini-3.8-flash`。如要改用 `gemini-3.7-flash`，請在啟動前設定 `$env:GEMINI_MODEL = "gemini-3.7-flash"`。未設定 `GEMINI_API_KEY` 時，網站仍可使用本機分析功能，但 AI 助理不會回覆。
+
+提問時，瀏覽器會將對話內容以及匿名化的近期感測器讀值、行程加減速摘要送到本機伺服器，再轉送 Gemini。程式不會傳送車牌、車輛代碼、行程代碼或 GPS 座標。
+
 自訂檔案與port：
 
 ```bash
@@ -29,6 +85,7 @@ python server.py --file "D:/your-folder/data.xlsx" --port 8502
 
 - 車隊總覽：日期範圍、車輛與行程數、有效配對里程／耗油、每車耗油及可搜尋行程表。
 - 行程與地圖：車輛、行程下拉選單；GPS路徑按速度／RPM／負載著色、起終點、停止引擎運轉熱點。
+- 任務即時監控：按「開始任務」進入獨立頁面，以目前選取的歷史行程每0.5秒模擬一筆感測器資料，動態繪製GPS軌跡並顯示車速、轉速、負載、溫度、電瓶、油量、里程與耗油；可暫停、繼續或結束。這是歷史資料重播，不連接真實車輛或感測器。
 - 觀測游標：拖曳時間游標或點選圖表／路段定位地圖，可逐筆播放。播放非真實時間等速。
 - 區間分析：輸入起終分鐘，縮放時間圖並計算觀測端點的燃油與里程增量。
 - 訊號分析：累積耗油、車速、RPM、負載、水溫、電瓶V、油量%、區間平均加速度，切換時間／距離橫軸。
@@ -72,10 +129,94 @@ python server.py --file "D:/your-folder/data.xlsx" --port 8502
 ## 驗證方式
 
 ```bash
-python test_analytics.py
+python -m unittest discover -s tests -p "test_*.py"
 ```
 
-測試包含跨行程隔離所用單趟公式、計數器倒退、CAN異常、長空檔切斷和事件去重。另用所提供完整Excel驗證493,744筆、20台車、3,541趟可匯入，第一趟案例30km／7L／3378秒。
+此指令會執行所有 `test_*.py`，涵蓋跨行程隔離、計數器倒退、CAN異常、長空檔切斷、事件去重、急加減速判定、AI 資料匿名化、時間切分邊界及模型輸入特徵檢查。另用所提供完整Excel驗證493,744筆、20台車、3,541趟可匯入，第一趟案例30km／7L／3378秒。
+
+## 急加減速與油耗分析（獨立腳本）
+
+分析腳本不會加入網站。安裝 `requirements.txt` 後，在此資料夾執行：
+
+```powershell
+python -m analysis.analyze_driving_fuel
+```
+
+預設讀取 `data.xlsx`（若不存在則讀取 `data.xls`），輸出到 `analysis_output`：逐趟彙總 CSV、急加減速頻率散佈圖、事件次數分組油耗箱型圖，以及摘要 Markdown。可用 `--file` 指定來源、`--output` 指定輸出資料夾、`--min-distance-km` 調整最小有效里程（預設 1 km）。事件定義為速度變化率超過 3 km/h/s 且連續至少 3 個有效觀測，觀測間隔最多 30 秒；油耗使用同一行程累積燃油與里程計數器差。結果為觀察性關聯，不能據此推論急加減速造成油耗改變。
+
+## 行程層級油耗模型（離線）
+
+### 模型概述
+
+目前模型是**行程層級的監督式回歸模型**：每筆樣本代表一趟車程，以該趟行程資料預測平均油耗（L/100 km）。標籤依現有分析規則計算：
+
+```text
+目標油耗 (L/100 km) = 100 × 有效累積燃油差 (L) ÷ 有效累積里程差 (km)
+```
+
+燃油與里程都取同一趟行程的累積計數器端點差。計數器重置、無效端點、非正里程、非有限值或其他無效標籤會排除，不以補零或修補計數器的方式製造標籤。
+
+目前的模型輸入是 19 個**不含燃油值**的特徵：行程距離與時間、時間加權的車速平均／標準差、RPM／引擎負載／冷卻水溫平均、引擎運轉停留比例、速度變化與加速度統計、正向動能變化代理值，以及 7 個速度區間的時間比例。每個特徵的資料涵蓋率會一併輸出作為品質診斷，**目前涵蓋率欄位只寫入特徵資料檔，不會輸入模型**。車輛與行程識別碼、來源列號、燃油值及其衍生欄位都不作為模型特徵；缺值由 XGBoost 原生處理，沒有另行擬合填補器。
+
+目前使用 XGBoost 平方誤差回歸，最多 800 輪，依驗證集 MAE early stopping（耐心 50 輪）。固定參數及 random seed 記錄在每次執行輸出的中繼資料中。儀表板目前**不載入或使用這個離線模型**；這是訓練與評估用的研究流程，不是已上線的即時預測或節油建議。
+
+### 準備資料及執行訓練
+
+在 FuelWise 專案根目錄（`server.py` 所在資料夾）開啟 PowerShell。使用與網站相同的 Python 虛擬環境，並先安裝專案依賴：
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+將獲准使用的來源活頁簿放在專案根目錄並命名為 `data.xlsx`／`data.xls`，或先使用網站匯入流程建立 `.cache` 索引。若索引尚未建立、只想建立索引而不啟動網站：
+
+```powershell
+.\.venv\Scripts\python.exe server.py --prepare-only
+```
+
+資料索引準備好後執行完整訓練及測試集評估：
+
+```powershell
+.\.venv\Scripts\python.exe -m analysis.train_fuel_model
+```
+
+程式**只讀取既有 SQLite 索引**，不會自行重新匯入 Excel、不會呼叫網站 API，也不會覆寫來源活頁簿。預設選取 `.cache` 中最新可用索引。可以指定索引和輸出根目錄：
+
+```powershell
+.\.venv\Scripts\python.exe -m analysis.train_fuel_model --index ".cache\index.sqlite" --output "analysis_output\fuel_model_runs"
+```
+
+每次執行都會在 `analysis_output/fuel_model_runs` 下建立新的時間戳資料夾，不覆蓋前次結果。主要產物如下：
+
+| 輸出檔案 | 用途 |
+| --- | --- |
+| `report.md` | 人類可讀的資料切分、排除摘要、評估指標及特徵說明。 |
+| `evaluation.json` | MAE、RMSE、R²、early-stopping 最佳輪數、負預測數及各車輛測試 MAE。 |
+| `metadata.json` | 特徵與目標定義、切分日期與樣本數、排除原因、來源索引資訊、套件版本及完整模型參數。 |
+| `trip_features.csv` | 納入切分的逐趟特徵、目標值、資料涵蓋率、品質欄位及 train／validation／test 標記。 |
+| `excluded_trips.csv` | 因目標／時間品質或跨切分邊界而排除的行程及原因。 |
+| `test_predictions.csv` | 測試集實際油耗、基準與 XGBoost 預測，以及逐趟誤差。 |
+| `xgboost_model.json` | 可用 XGBoost 載入的模型檔。 |
+| `feature_definitions.json` | 特徵定義、單位及適用限制。 |
+
+### 目前訓練與評估方法
+
+1. 從索引逐趟讀取原始觀測，使用共用 `analytics.py` 重新計算標籤、特徵與資料品質；拒絕重複的車輛＋行程樣本。
+2. 依行程起始時間排序，按約 **70%／15%／15%** 建立 train／validation／test 時間區段。同一趟若跨越任一時間邊界就整趟排除，不隨機切分、不退回放寬邊界的切法。有效樣本少於 20 趟或切分後任何集合為空時，訓練會停止。
+3. 只用 train 訓練 XGBoost；validation 僅用於 early stopping；test 僅在模型選定後評估，不用來調參。固定的驗證規則可避免將未來測試資料洩漏回模型選擇。
+4. 在同一測試集上比較 XGBoost 與簡單基準：依訓練資料計算的車輛油耗中位數；測試中未出現在訓練資料的車輛則退回全體訓練中位數。比較 MAE、RMSE、R²，也保留各車輛 MAE 與負油耗預測數量。
+5. 儲存模型後重新載入，確認載入前後測試預測一致，並輸出本次完整資料、模型及軟體版本資訊。
+
+### 多人協作建議
+
+- **先對齊資料與程式版本**：每位合作夥伴使用相同、經授權的來源活頁簿、相同 Git commit／分支及 Python 依賴版本。可先跑 `python -m unittest discover -s tests -p "test_*.py"`，再執行上述訓練命令。
+- **一次只比較一個明確改動**：例如提出一組新特徵、改一個特徵定義，或提出新的模型參數。記下假設、修改檔案、預期改善指標和可能副作用；不要在同一輪同時更換標籤、特徵、切分及模型參數。
+- **保留時間測試集的獨立性**：要改特徵或調參時依 train／validation 決定；test 結果用來做最終比較，反覆根據 test 調整會使測試集不再是獨立評估。若已用 test 指導改動，應在合作紀錄註明，並規劃新的未來時間保留集再確認。
+- **用產物而不只看單一分數**：比較每次的 `report.md`、`evaluation.json`、`metadata.json`、樣本數與排除原因。模型 MAE 必須同時對照中位數基準；也要檢查 RMSE、各車輛表現、負預測及資料涵蓋率，避免平均分數掩蓋局部退步或品質問題。
+- **用小樣本測試守住行為**：新增／修改特徵或切分規則時，同步更新 `tests/test_fuel_model.py`，涵蓋單位、缺值、邊界與目標洩漏；通過測試後才用完整資料執行訓練。
+- **妥善分享結果**：`analysis_output/` 和來源資料不納入版本控制。輸出含逐趟目標／預測、車輛識別碼、行程碼、來源路徑等資訊；分享前先依團隊資料權限去識別化，只共享合作所需的報告、設定及版本資訊。不可把原始 Excel、SQLite 索引或含識別碼的 CSV 貼到公開 issue、聊天室或未核准雲端。
+
+時間切分評估衡量的是**已觀測車隊在較晚時間行程上的預測表現**，不代表對新車輛、新路線或其他車隊泛化。行程油耗預測誤差不是駕駛浪費、可節省油量或因果改善效果；目前資料也沒有完整載重、坡度、交通、天候等控制變數。
 
 ## 參考
 

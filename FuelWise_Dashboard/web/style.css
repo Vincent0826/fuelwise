@@ -72,6 +72,7 @@ aside label {
 }
 select,
 input,
+textarea,
 button,
 .button {
   font: inherit;
@@ -80,7 +81,8 @@ button,
   padding: 9px 12px;
 }
 select,
-input {
+input,
+textarea {
   background: white;
   color: #213b43;
   max-width: 100%;
@@ -250,6 +252,221 @@ p {
 }
 .split:has(#speedBands) {
   grid-template-columns: 1fr 1fr;
+}
+.live-heading,
+.live-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.live-heading {
+  margin-bottom: 16px;
+}
+.live-heading h2 {
+  font-size: 24px;
+}
+.live-heading .eyebrow {
+  margin-bottom: 2px;
+}
+.live-status {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.live-status::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: #aab2b8;
+}
+.live-status.running::before {
+  background: #36a879;
+  box-shadow: 0 0 0 4px #36a87922;
+}
+.live-eco-alert {
+  margin: 0 0 12px;
+  border-left-color: #e0a329;
+  background: #fff4df;
+  color: #76520f;
+  font-weight: 600;
+}
+.live-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(300px, 0.8fr);
+  align-items: stretch;
+  gap: 20px;
+}
+.live-map-panel,
+.live-sensors-panel {
+  margin-bottom: 0;
+}
+#liveMap {
+  height: min(68vh, 720px);
+  min-height: 460px;
+  border-radius: 2px;
+  background: #e7eeee;
+  z-index: 0;
+}
+.live-progress-track {
+  height: 4px;
+  margin-top: 15px;
+  background: #e7eaec;
+}
+#liveProgressBar {
+  width: 0;
+  height: 100%;
+  background: #718391;
+  transition: width 250ms linear;
+}
+.live-sensors {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.live-sensor {
+  min-width: 0;
+  padding: 9px 10px;
+  background: #f2f3f4;
+  border: 1px solid var(--line);
+}
+.live-sensor span {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+.live-sensor strong {
+  display: block;
+  margin-top: 2px;
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.live-sensor small {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.live-sensor-change {
+  display: flex;
+  justify-content: flex-start;
+  gap: 6px;
+  margin-top: 2px;
+  font-size: 10px;
+  line-height: 1.2;
+}
+.live-sensor-change small {
+  color: var(--muted);
+  font-size: inherit;
+}
+.live-sensor-change .live-change-value {
+  font-weight: 600;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.live-sensor .live-change-arrow {
+  display: inline;
+  color: inherit;
+  font-size: inherit;
+}
+.live-sensor-change .increase {
+  color: #198754;
+}
+.live-sensor-change .decrease {
+  color: #c83e3e;
+}
+.live-sensor-change .steady {
+  color: var(--muted);
+}
+.live-ai {
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+.live-ai-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.live-ai-heading h3 {
+  margin: 0;
+  font-size: 16px;
+}
+.live-ai-heading span {
+  font-size: 10px;
+  text-align: right;
+}
+.live-ai-heading .ready {
+  color: #198754;
+}
+.live-ai-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 240px;
+  overflow-y: auto;
+  margin: 12px 0;
+  padding: 2px;
+}
+.live-ai-message {
+  max-width: 95%;
+  margin: 0;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: #f2f3f4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.live-ai-message.user {
+  align-self: flex-end;
+  background: #e8eef0;
+}
+.live-ai-message.error {
+  border-color: #e6b7b0;
+  background: #fff0ed;
+  color: #9e3325;
+}
+.live-ai-form {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+.live-ai-form textarea {
+  flex: 1;
+  min-width: 0;
+  resize: vertical;
+}
+.live-ai-privacy {
+  margin: 7px 0 0;
+  font-size: 10px;
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.sensor-pulse {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #aab2b8;
+}
+.sensor-pulse.running {
+  background: #36a879;
+  box-shadow: 0 0 0 5px #36a87922;
 }
 #map {
   height: 460px;
@@ -430,6 +647,16 @@ input:focus-visible {
 [hidden] {
   display: none !important;
 }
+body.live-mode aside {
+  display: none !important;
+}
+body.live-mode main {
+  margin-left: 0;
+  max-width: none;
+}
+body.live-mode main > header {
+  display: none;
+}
 @media (max-width: 1100px) {
   aside {
     width: 225px;
@@ -443,6 +670,9 @@ input:focus-visible {
     grid-template-columns: repeat(3, 1fr);
   }
   .split {
+    grid-template-columns: 1fr;
+  }
+  .live-layout {
     grid-template-columns: 1fr;
   }
   .chartgrid {
@@ -480,6 +710,21 @@ input:focus-visible {
   }
   .panelhead {
     flex-wrap: wrap;
+  }
+  .live-heading,
+  .live-actions {
+    align-items: flex-start;
+  }
+  .live-heading {
+    flex-direction: column;
+  }
+  .live-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  #liveMap {
+    min-height: 350px;
+    height: 55vh;
   }
   #qualityInfo {
     grid-template-columns: 1fr 1fr;

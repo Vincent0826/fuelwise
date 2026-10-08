@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>FuelWise｜車隊行程分析</title>
+    <title>FuelWise｜智能油耗領航員</title>
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
     <link rel="stylesheet" href="/style.css">
@@ -11,52 +11,59 @@
 
     <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script defer src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
-    <script defer src="/app.js"></script>
+    <script defer src="/app.js?v=live-task-2"></script>
   </head>
 
   <body>
     <aside>
-      <div class="brand">
-        </b> FuelWise <br>
-        智能油耗領航員
+      <div class="sidebar-scroll">
+        <div class="brand">
+            <span class="brand-copy">FuelWise<small>智能油耗領航員</small></span>
+        </div>
+
+        <section class="sidebar-filters" aria-label="行程篩選">
+          <label>
+            車輛
+            <select id="vehicle"></select>
+          </label>
+
+          <div class="row">
+            <label>
+              起始日期
+              <input type="date" id="dateFrom">
+            </label>
+            <label>
+              結束日期
+              <input type="date" id="dateTo">
+            </label>
+          </div>
+
+          <label>
+            行程
+            <select id="journey"></select>
+          </label>
+
+          <button id="refresh">套用篩選</button>
+        </section>
+
+        <nav id="nav" aria-label="分析功能">
+          <div class="nav-group">
+            <p class="eyebrow">工作區</p>
+            <button data-tab="overview">車隊總覽</button>
+            <button data-tab="trip" class="active">行程與地圖</button>
+            <button data-tab="live">開始任務</button>
+          </div>
+          <div class="nav-group">
+            <p class="eyebrow">分析與診斷</p>
+            <button data-tab="signals">訊號分析</button>
+            <button data-tab="events">事件與停留</button>
+            <button data-tab="compare">相似路線分析</button>
+            <button data-tab="quality">資料品質與原始值</button>
+          </div>
+        </nav>
       </div>
-
-      <label>
-        車輛
-        <select id="vehicle"></select>
-      </label>
-
-      <div class="row">
-        <label>
-          起始日期
-          <input type="date" id="dateFrom">
-        </label>
-        <label>
-          結束日期
-          <input type="date" id="dateTo">
-        </label>
-      </div>
-
-      <label>
-        行程
-        <select id="journey"></select>
-      </label>
-
-      <button id="refresh">套用篩選</button>
-      <hr>
-
-      <p class="eyebrow">WORKSPACE</p>
-      <nav id="nav">
-        <button data-tab="overview">01　車隊總覽</button>
-        <button data-tab="trip" class="active">02　行程與地圖</button>
-        <button data-tab="signals">03　訊號分析</button>
-        <button data-tab="events">04　事件與停留</button>
-        <button data-tab="compare">05　相似任務比較</button>
-        <button data-tab="quality">06　資料品質與原始值</button>
-      </nav>
 
       <div class="sidebottom">
-        LOCAL ANALYTICS<br>
         <small id="source"></small>
       </div>
     </aside>
@@ -74,6 +81,67 @@
       <div id="error" role="alert" hidden></div>
       <div id="loading">正在載入…</div>
       <div id="cards" class="cards"></div>
+
+      <section id="live" class="tab" hidden>
+        <div class="live-heading">
+          <div>
+            <p class="eyebrow">SIMULATED SENSOR STREAM</p>
+            <h2>即時感測器監控</h2>
+            <p class="muted">使用目前選取的歷史行程逐筆模擬車載感測器資料。</p>
+          </div>
+          <div class="live-actions">
+            <button id="liveBack" class="secondary">← 返回上一模式</button>
+            <span id="liveStatus" class="live-status">尚未開始</span>
+            <button id="liveToggle">▶ 開始任務</button>
+            <button id="liveStop" class="secondary" disabled>結束任務</button>
+          </div>
+        </div>
+        <div class="live-layout">
+          <div class="panel live-map-panel">
+            <div class="panelhead">
+              <div>
+                <h2>行駛軌跡</h2>
+                <p id="liveTrip" class="muted">等待行程資料</p>
+              </div>
+            </div>
+            <div id="liveMap"></div>
+            <div class="live-progress-track" aria-hidden="true">
+              <div id="liveProgressBar"></div>
+            </div>
+          </div>
+          <div class="panel live-sensors-panel">
+            <div class="panelhead">
+              <div>
+                <h2>目前感測器資料</h2>
+                <p id="liveTimestamp" class="muted">尚無觀測資料</p>
+              </div>
+              <span class="sensor-pulse" aria-hidden="true"></span>
+            </div>
+            <p id="liveEcoAlert" class="notice live-eco-alert" role="status" aria-live="polite" hidden></p>
+            <div id="liveSensors" class="live-sensors">
+              <p class="muted">按「開始任務」後，感測器資料將逐筆更新。</p>
+            </div>
+            <div class="live-ai">
+              <div class="live-ai-heading">
+                <h3>AI 行程助理</h3>
+                <span id="liveAiStatus" class="muted">正在檢查模型設定…</span>
+              </div>
+              <div id="liveAiMessages" class="live-ai-messages" role="log" aria-live="polite">
+                <p class="live-ai-message assistant">你好！我可以根據目前行程的感測器資料，協助分析急加速、急煞車與行駛狀況。</p>
+              </div>
+              <form id="liveAiForm" class="live-ai-form">
+                <label class="visually-hidden" for="liveAiInput">詢問 AI 行程助理</label>
+                <textarea id="liveAiInput" rows="2" maxlength="1000" placeholder="例如：這趟行程有加速太快嗎？" required></textarea>
+                <button id="liveAiSend" type="submit">送出</button>
+              </form>
+              <p class="live-ai-privacy muted">匿名化感測器讀值、全程加減速送往 Gemini，不含車牌、車輛代碼、行程代碼。</p>
+            </div>
+          </div>
+        </div>
+        <p class="notice warn">
+          模擬資料：感測值來自所選歷史行程，並非目前車輛的即時連線。
+        </p>
+      </section>
 
       <section id="overview" class="tab" hidden>
         <div class="panel">
@@ -153,6 +221,7 @@
           <p id="windowSummary"></p>
           <div id="timeline" class="chart tall"></div>
         </div>
+
       </section>
 
       <section id="signals" class="tab" hidden>
@@ -215,9 +284,9 @@
         <div class="panel">
           <div class="panelhead">
             <div>
-              <h2>相似運輸任務比較</h2>
+              <h2>同車、相近起終點的歷史行程</h2>
               <p class="muted">
-                同一車輛、同方向，起終點各距離本趟不超過指定半徑；不要求中間走法相同。套用側欄日期範圍。
+                描述性歷史比較；起點與終點分別依指定半徑篩選，不代表行駛相同路徑。
               </p>
             </div>
             <select id="odRadius">
@@ -227,6 +296,12 @@
             </select>
           </div>
           <p id="peerNote"></p>
+          <div id="compareSummary" class="cards"></div>
+          <p id="compareStatus" class="notice" role="status" aria-live="polite"></p>
+          <p class="muted">
+            此比較僅依同車與相近起終點篩選，未確認相同路徑，亦未校正路況、坡度與載重；差異不直接代表駕駛表現或可節省油量。
+          </p>
+          <h3>停車引擎運轉時間與每百公里耗油（描述性）</h3>
           <div id="compareChart" class="chart"></div>
           <div id="peerTable" class="tablewrap"></div>
         </div>

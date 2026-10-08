@@ -1,0 +1,1 @@
+"""FuelWise automated tests."""

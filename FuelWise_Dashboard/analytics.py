@@ -21,6 +21,20 @@ FIELDS = {
     'fuel_level': 'line.fuelLevel',
     'can_status': 'can.canStatus',
 }
+SEGMENT_WINDOW_SECONDS = 15 * 60
+MIN_SEGMENT_FUEL_UPDATES = 3
+QUALITY_REASON_LABELS = {
+    'non_positive_interval': '非正取樣間隔',
+    'long_gap': '相鄰觀測間隔超過120秒，已排除',
+    'invalid_can': '區間端點CAN狀態無效',
+    'missing_fuel': '燃油計數器端點缺值',
+    'cross_window_fuel': '有效燃油增量跨越時間窗邊界，未分配',
+    'fuel_counter_reset': '燃油計數器倒退，該區間未計算',
+    'missing_odometer': '里程計數器端點缺值',
+    'odo_counter_reset': '里程計數器倒退，該區間未計算',
+    'missing_speed': '車速缺值',
+    'missing_rpm': 'RPM缺值',
+}
 EVENT_NAMES = dict(
     enumerate(
         [
@@ -61,7 +75,313 @@ def hav(lat1, lon1, lat2, lon2):
     )
 
 
-def analyze(records, detail=True, gap_limit=120):
+def analyze_segments(a, valid_can, gap_limit=120, window_seconds=SEGMENT_WINDOW_SECONDS):
+    """Summarize fixed windows using only adjacent observations within each window."""
+    if window_seconds <= 0:
+        raise ValueError('時間窗長度必須大於0')
+
+    elapsed = max(0.0, float(a.sec.iloc[-1]))
+    window_count = max(1, math.ceil(elapsed / window_seconds))
+    accumulators = []
+    for index in range(window_count):
+        start_sec = index * window_seconds
+        end_sec = min((index + 1) * window_seconds, elapsed)
+        accumulators.append(
+            {
+                'index': index,
+                'start_sec': start_sec,
+                'end_sec': end_sec,
+                'observation_indices': [],
+                'reasons': set(),
+                'excluded_intervals': {},
+                'valid_coverage_sec': 0.0,
+                'fuel_coverage_sec': 0.0,
+                'odo_coverage_sec': 0.0,
+                'speed_sum': 0.0,
+                'speed_coverage_sec': 0.0,
+                'rpm_sum': 0.0,
+                'rpm_coverage_sec': 0.0,
+                'fuel_l': 0.0,
+                'fuel_intervals': 0,
+                'fuel_updates': 0,
+                'odo_km': 0.0,
+                'odo_intervals': 0,
+                'cross_boundary_intervals': 0,
+            }
+        )
+
+    def window_indices_for_interval(start_sec, end_sec):
+        first = max(0, int(start_sec // window_seconds))
+        last = min(window_count - 1, int(end_sec // window_seconds))
+        return [
+            index
+            for index in range(first, last + 1)
+            if min(end_sec, accumulators[index]['end_sec'])
+            > max(start_sec, accumulators[index]['start_sec'])
+        ]
+
+    def add_exclusion(reason, indices, totals):
+        totals[reason] = totals.get(reason, 0) + 1
+        for index in indices:
+            window = accumulators[index]
+            window['reasons'].add(reason)
+            window['excluded_intervals'][reason] = (
+                window['excluded_intervals'].get(reason, 0) + 1
+            )
+
+    for index, second in enumerate(a.sec):
+        window_index = min(window_count - 1, int(float(second) // window_seconds))
+        accumulators[window_index]['observation_indices'].append(index)
+
+    excluded_intervals = {}
+    unassigned_intervals = []
+    unassigned_fuel_l = 0.0
+    unassigned_fuel_count = 0
+    unassigned_odo_km = 0.0
+    unassigned_odo_count = 0
+    excluded_long_gap_fuel_l = 0.0
+    excluded_long_gap_fuel_count = 0
+    observed_fuel_intervals = 0
+    allocated_fuel_intervals = 0
+    observed_odo_intervals = 0
+
+    for index in range(len(a) - 1):
+        start_sec = float(a.sec.iloc[index])
+        end_sec = float(a.sec.iloc[index + 1])
+        interval_sec = end_sec - start_sec
+        if interval_sec <= 0:
+            bucket = min(window_count - 1, int(start_sec // window_seconds))
+            add_exclusion('non_positive_interval', [bucket], excluded_intervals)
+            continue
+
+        window_indices = window_indices_for_interval(start_sec, end_sec)
+        if interval_sec > gap_limit:
+            add_exclusion('long_gap', window_indices, excluded_intervals)
+            if valid_can.iloc[index] and valid_can.iloc[index + 1]:
+                fuel_start, fuel_end = a.fuel.iloc[index : index + 2]
+                fuel_delta = fuel_end - fuel_start
+                if pd.notna(fuel_delta) and fuel_delta >= -1e-8:
+                    excluded_long_gap_fuel_l += max(0.0, float(fuel_delta))
+                    excluded_long_gap_fuel_count += 1
+                elif pd.notna(fuel_delta):
+                    add_exclusion(
+                        'fuel_counter_reset', window_indices, excluded_intervals
+                    )
+                odo_start, odo_end = a.odo.iloc[index : index + 2]
+                if pd.notna(odo_start) and pd.notna(odo_end) and odo_end < odo_start - 1e-8:
+                    add_exclusion(
+                        'odo_counter_reset', window_indices, excluded_intervals
+                    )
+            continue
+
+        if not (valid_can.iloc[index] and valid_can.iloc[index + 1]):
+            add_exclusion('invalid_can', window_indices, excluded_intervals)
+            continue
+
+        for window_index in window_indices:
+            window = accumulators[window_index]
+            overlap_sec = min(end_sec, window['end_sec']) - max(
+                start_sec, window['start_sec']
+            )
+            window['valid_coverage_sec'] += overlap_sec
+            speed = a.speed.iloc[index]
+            rpm = a.rpm.iloc[index]
+            if pd.notna(speed):
+                window['speed_sum'] += float(speed) * overlap_sec
+                window['speed_coverage_sec'] += overlap_sec
+            else:
+                window['reasons'].add('missing_speed')
+            if pd.notna(rpm):
+                window['rpm_sum'] += float(rpm) * overlap_sec
+                window['rpm_coverage_sec'] += overlap_sec
+            else:
+                window['reasons'].add('missing_rpm')
+
+        start_window = min(window_count - 1, int(start_sec // window_seconds))
+        end_window = min(window_count - 1, int(end_sec // window_seconds))
+        same_window = start_window == end_window
+        boundary_fuel_delta = None
+        boundary_odo_delta = None
+
+        fuel_start, fuel_end = a.fuel.iloc[index : index + 2]
+        if pd.isna(fuel_start) or pd.isna(fuel_end):
+            add_exclusion('missing_fuel', window_indices, excluded_intervals)
+        else:
+            fuel_delta = float(fuel_end - fuel_start)
+            if fuel_delta < -1e-8:
+                add_exclusion('fuel_counter_reset', window_indices, excluded_intervals)
+            else:
+                observed_fuel_intervals += 1
+                if same_window:
+                    window = accumulators[start_window]
+                    window['fuel_l'] += max(0.0, fuel_delta)
+                    window['fuel_intervals'] += 1
+                    window['fuel_coverage_sec'] += interval_sec
+                    allocated_fuel_intervals += 1
+                    if fuel_delta > 1e-8:
+                        window['fuel_updates'] += 1
+                else:
+                    boundary_fuel_delta = max(0.0, fuel_delta)
+                    unassigned_fuel_l += max(0.0, fuel_delta)
+                    unassigned_fuel_count += 1
+                    for window_index in window_indices:
+                        window = accumulators[window_index]
+                        window['cross_boundary_intervals'] += 1
+                        window['reasons'].add('cross_window_fuel')
+
+        odo_start, odo_end = a.odo.iloc[index : index + 2]
+        if pd.isna(odo_start) or pd.isna(odo_end):
+            add_exclusion('missing_odometer', window_indices, excluded_intervals)
+        else:
+            odo_delta = float(odo_end - odo_start)
+            if odo_delta < -1e-8:
+                add_exclusion('odo_counter_reset', window_indices, excluded_intervals)
+            else:
+                observed_odo_intervals += 1
+                if same_window:
+                    window = accumulators[start_window]
+                    window['odo_km'] += max(0.0, odo_delta)
+                    window['odo_intervals'] += 1
+                    window['odo_coverage_sec'] += interval_sec
+                else:
+                    boundary_odo_delta = max(0.0, odo_delta)
+                    unassigned_odo_km += max(0.0, odo_delta)
+                    unassigned_odo_count += 1
+        if not same_window and (
+            boundary_fuel_delta is not None or boundary_odo_delta is not None
+        ):
+            unassigned_intervals.append(
+                {
+                    'from_time': str(a.time.iloc[index]),
+                    'to_time': str(a.time.iloc[index + 1]),
+                    'from_window_index': start_window,
+                    'to_window_index': end_window,
+                    'fuel_l': boundary_fuel_delta,
+                    'distance_km': boundary_odo_delta,
+                }
+            )
+
+    windows = []
+    for window in accumulators:
+        indices = window['observation_indices']
+        duration = window['end_sec'] - window['start_sec']
+        support_sec = window['valid_coverage_sec']
+        fuel_coverage = window['fuel_coverage_sec']
+        coverage_pct = min(100.0, 100 * support_sec / duration) if duration else None
+        fuel_coverage_pct = (
+            min(100.0, 100 * fuel_coverage / duration) if duration else None
+        )
+        if not indices:
+            observed_start = observed_end = None
+            valid_observations = 0
+        else:
+            observed_start = str(a.time.iloc[indices[0]])
+            observed_end = str(a.time.iloc[indices[-1]])
+            valid_observations = sum(bool(valid_can.iloc[item]) for item in indices)
+
+        if window['fuel_intervals'] == 0 and window['cross_boundary_intervals']:
+            quality_status = '解析度不足'
+            window['reasons'].add('cross_window_fuel')
+        elif window['fuel_intervals'] == 0:
+            quality_status = '資料不足'
+        elif window['fuel_updates'] == 0:
+            quality_status = '未觀測到增量'
+        elif window['fuel_updates'] < MIN_SEGMENT_FUEL_UPDATES:
+            quality_status = '解析度不足'
+        elif coverage_pct is not None and coverage_pct < 100 - 1e-6:
+            quality_status = '部分涵蓋'
+        else:
+            quality_status = '可計算（部分觀測）'
+
+        quality_reasons = sorted(
+            QUALITY_REASON_LABELS[reason] for reason in window['reasons']
+        )
+        if 0 < window['fuel_updates'] < MIN_SEGMENT_FUEL_UPDATES:
+            quality_reasons.append(
+                f'正向燃油計數器更新 {window["fuel_updates"]}/{MIN_SEGMENT_FUEL_UPDATES} 次'
+            )
+        windows.append(
+            {
+                'index': window['index'],
+                'window_start_sec': window['start_sec'],
+                'window_end_sec': window['end_sec'],
+                'window_start': str(a.time.iloc[0] + pd.to_timedelta(window['start_sec'], unit='s')),
+                'window_end': str(a.time.iloc[0] + pd.to_timedelta(window['end_sec'], unit='s')),
+                'last_partial_window': duration < window_seconds,
+                'observed_start': observed_start,
+                'observed_end': observed_end,
+                'observation_count': len(indices),
+                'valid_can_observations': valid_observations,
+                'fuel_l': window['fuel_l'] if window['fuel_intervals'] else None,
+                'fuel_status': (
+                    'no_increment_observed'
+                    if window['fuel_intervals'] and window['fuel_updates'] == 0
+                    else 'observed'
+                    if window['fuel_intervals']
+                    else 'unavailable'
+                ),
+                'fuel_interval_count': window['fuel_intervals'],
+                'fuel_positive_update_count': window['fuel_updates'],
+                'distance_km': window['odo_km'] if window['odo_intervals'] else None,
+                'distance_interval_count': window['odo_intervals'],
+                'avg_speed_kmh': (
+                    window['speed_sum'] / window['speed_coverage_sec']
+                    if window['speed_coverage_sec']
+                    else None
+                ),
+                'speed_coverage_sec': window['speed_coverage_sec'],
+                'avg_rpm': (
+                    window['rpm_sum'] / window['rpm_coverage_sec']
+                    if window['rpm_coverage_sec']
+                    else None
+                ),
+                'rpm_coverage_sec': window['rpm_coverage_sec'],
+                'valid_coverage_sec': support_sec,
+                'coverage_pct': coverage_pct,
+                'fuel_coverage_pct': fuel_coverage_pct,
+                'cross_boundary_interval_count': window['cross_boundary_intervals'],
+                'excluded_intervals': window['excluded_intervals'],
+                'quality_status': quality_status,
+                'quality_reasons': quality_reasons,
+            }
+        )
+
+    return {
+        'window_seconds': window_seconds,
+        'minimum_fuel_updates_per_window': MIN_SEGMENT_FUEL_UPDATES,
+        'window_count': window_count,
+        'windows': windows,
+        'summary': {
+            'allocated_fuel_l': (
+                sum(window['fuel_l'] or 0.0 for window in accumulators)
+                if allocated_fuel_intervals
+                else None
+            ),
+            'unassigned_cross_window_fuel_l': (
+                unassigned_fuel_l if unassigned_fuel_count else None
+            ),
+            'unassigned_cross_window_fuel_interval_count': unassigned_fuel_count,
+            'excluded_long_gap_fuel_l': (
+                excluded_long_gap_fuel_l if excluded_long_gap_fuel_count else None
+            ),
+            'excluded_long_gap_fuel_interval_count': excluded_long_gap_fuel_count,
+            'unassigned_cross_window_distance_km': (
+                unassigned_odo_km if unassigned_odo_count else None
+            ),
+            'unassigned_cross_window_distance_interval_count': unassigned_odo_count,
+            'observed_fuel_interval_count': observed_fuel_intervals,
+            'observed_distance_interval_count': observed_odo_intervals,
+            'excluded_intervals': excluded_intervals,
+            'measurement_note': (
+                '分段耗油僅加總兩端點位於同一窗且通過品質檢查的相鄰計數器差；'
+                '跨窗增量不插值，長缺口、無效CAN狀態與計數器倒退區間不計入。'
+            ),
+        },
+        'unassigned_cross_window_intervals': unassigned_intervals,
+    }
+
+
+def analyze(records, detail=True, gap_limit=120, feature_only=False):
     d = pd.DataFrame(records)
     d['time'] = pd.to_datetime(d['time'], errors='coerce')
     invalid_time = int(d.time.isna().sum())
@@ -208,6 +528,27 @@ def analyze(records, detail=True, gap_limit=120):
     if not detail:
         return clean(summary)
 
+    if feature_only:
+        quality['missing_per_column'] = {
+            column: int(d[column].isna().sum()) for column in d.columns
+        }
+        quality['fuel_min_positive_step_l'] = (
+            a.fuel.diff().where(lambda values: values > 0).min()
+        )
+        quality['odo_min_positive_step_km'] = (
+            a.odo.diff().where(lambda values: values > 0).min()
+        )
+        a['index'] = np.arange(len(a))
+        a['dt'] = dt
+        return clean(
+            {
+                'summary': summary,
+                'points': a.to_dict('records'),
+                'quality': quality,
+            }
+        )
+
+    segments = analyze_segments(a, valid_can, gap_limit)
     stops = []
     i = 0
     while i < len(a) - 1:
@@ -336,6 +677,7 @@ def analyze(records, detail=True, gap_limit=120):
         {
             'summary': summary,
             'points': a.to_dict('records'),
+            'segments': segments,
             'events': events,
             'stops': stops,
             'bands': bands,

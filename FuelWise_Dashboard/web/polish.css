@@ -649,3 +649,268 @@ nav button.active {
   box-shadow: inset 3px 0 #aab4bb;
   color: #fff;
 }
+
+aside {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 22px 14px 14px;
+  overflow: hidden;
+  background: #fff;
+  border-right: 1px solid #e3e6e8;
+  box-shadow: none;
+  color: #303940;
+}
+
+.sidebar-scroll {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 22px;
+  color: #20272d;
+  font-size: 21px;
+  letter-spacing: -0.7px;
+}
+
+.brand-mark {
+  display: grid !important;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  place-items: center;
+  margin: 0 !important;
+  border-radius: 10px;
+  background: #e9f1ef;
+  color: #3d7169;
+  font-size: 18px !important;
+  font-weight: 700;
+  letter-spacing: -0.5px !important;
+}
+
+.brand-copy {
+  display: block !important;
+  margin: 0 !important;
+  color: #252d32 !important;
+  font-size: calc(22px + 4pt) !important;
+  font-weight: 650;
+  letter-spacing: -0.5px !important;
+  line-height: 1.2;
+}
+
+.brand-copy small {
+  display: block;
+  margin-top: 3px;
+  color: #859098;
+  font-size: calc(10px + 4pt);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+.sidebar-filters {
+  margin-bottom: 18px;
+  padding: 12px;
+  border: 1px solid #e8eaec;
+  border-radius: 12px;
+  background: #f8f9fa;
+}
+
+.sidebar-filters .eyebrow {
+  margin: 0 0 8px;
+  color: #7a858c;
+}
+
+.sidebar-filters label {
+  margin: 9px 0;
+  color: #59656c;
+  font-size: 11px;
+}
+
+.sidebar-filters input,
+.sidebar-filters select {
+  border-color: #e0e4e6;
+  border-radius: 8px;
+  background: #fff;
+  color: #303940;
+  font-size: 12px;
+}
+
+.sidebar-filters .row {
+  gap: 7px;
+}
+
+.sidebar-filters .row input {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 5px;
+  font-size: 10px;
+}
+
+.sidebar-filters #refresh {
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px 10px;
+  border-color: #e2e6e7;
+  border-radius: 8px;
+  background: #edf1f1;
+  color: #43585b;
+  font-size: 12px;
+}
+
+#nav {
+  display: block;
+}
+
+.nav-group {
+  margin: 0 0 17px;
+}
+
+.nav-group .eyebrow {
+  margin: 0 0 6px;
+  padding: 0 10px;
+  color: #89939a;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+}
+
+nav button {
+  margin: 2px 0;
+  padding: 9px 10px;
+  border-radius: 9px;
+  color: #4c5960;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+nav button:hover {
+  background: #f4f5f6;
+  color: #263238;
+}
+
+nav button.active {
+  background: #eff0f1;
+  box-shadow: none;
+  color: #252d32;
+  font-weight: 600;
+}
+
+.sidebottom {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  column-gap: 7px;
+  margin: 0;
+  padding: 12px 4px 0;
+  border-top: 1px solid #eceeef;
+  color: #626e75;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.local-indicator {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #55a57d;
+}
+
+.sidebottom small {
+  grid-column: 1 / -1;
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+  color: #8a949b;
+  font-size: 10px;
+}
+
+aside hr {
+  border-color: #eceeef;
+}
+
+@media (max-width: 700px) {
+  aside {
+    display: block;
+    padding: 16px 14px;
+    overflow: visible;
+    border-right: 0;
+    border-bottom: 1px solid #e3e6e8;
+  }
+
+  .sidebar-scroll {
+    overflow: visible;
+  }
+
+  .brand {
+    margin-bottom: 14px;
+  }
+
+  .sidebar-filters {
+    margin-bottom: 12px;
+  }
+
+  #nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+  }
+
+  .nav-group {
+    display: contents;
+  }
+
+  .nav-group .eyebrow {
+    display: none;
+  }
+
+  nav button {
+    width: auto;
+    margin: 0;
+  }
+}
+
+.sidebar-filters input:hover,
+.sidebar-filters select:hover {
+  border-color: #cfd7d9;
+  background: #f4f6f7;
+  color: #303940;
+}
+
+.sidebar-filters #refresh:hover {
+  border-color: #d4dddd;
+  background: #e9eeee;
+  color: #34474a;
+  filter: none;
+}
+
+main button,
+main .button {
+  border-color: #d9dfe2;
+  background: #f1f3f4;
+  color: #344149;
+}
+
+main button:not(:disabled):hover,
+main .button:hover {
+  border-color: #cfd7da;
+  background: #e7ebed;
+  color: #263238;
+  filter: none;
+  box-shadow: none;
+}
+
+main #download {
+  border-color: #d9dfe2;
+  background: #f1f3f4;
+  color: #344149;
+}
+
+main #download:hover {
+  border-color: #cfd7da;
+  background: #e7ebed;
+  color: #263238;
+}

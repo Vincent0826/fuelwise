@@ -22,9 +22,37 @@ let catalog,
   cursorIndex = 0,
   playing = null,
   requestNumber = 0,
-  activeTab = 'trip';
+  activeTab = 'trip',
+  liveReturnTab = 'trip';
 let peers = [],
-  fleetRows = [];
+  fleetRows = [],
+  liveAiHistory = [],
+  liveAiSending = false,
+  liveAiRequestNumber = 0;
+let liveMap,
+  liveRouteLayer,
+  liveSegment,
+  liveMarker,
+  liveTimer = null,
+  liveIndex = 0,
+  liveActive = false,
+  liveRunning = false,
+  liveAccelerationDirection = 0,
+  liveAccelerationStreak = 0,
+  liveEcoAlertDirection = 0,
+  liveEcoAlertRemaining = 0;
+const LIVE_ACCELERATION_THRESHOLD = 3;
+const MIN_COMPARE_REFERENCE_TRIPS = 5;
+const LIVE_AI_SENSOR_FIELDS = [
+  'speed',
+  'rpm',
+  'load',
+  'temp',
+  'battery',
+  'fuel_level',
+  'distance',
+  'used',
+];
 const layout = {
   paper_bgcolor: 'white',
   plot_bgcolor: 'white',
@@ -46,6 +74,164 @@ async function get(url) {
   if (!r.ok) throw Error(`資料讀取失敗 (${r.status})`);
   return r.json();
 }
+function appendLiveAiMessage(role, text) {
+  const message = document.createElement('p');
+  message.className = `live-ai-message ${role}`;
+  message.textContent = text;
+  $('liveAiMessages').append(message);
+  $('liveAiMessages').scrollTop = $('liveAiMessages').scrollHeight;
+  return message;
+}
+function liveAiPoint(point, offsetSec = null) {
+  const sample = {};
+  if (Number.isFinite(Number(offsetSec))) sample.offset_sec = Number(offsetSec);
+  LIVE_AI_SENSOR_FIELDS.forEach((field) => {
+    const value = point[field];
+    sample[field] =
+      value == null || !Number.isFinite(Number(value)) ? null : Number(value);
+  });
+  return sample;
+}
+function buildLiveAiSensorContext() {
+  const points = current.points;
+  const events = [];
+  let direction = 0;
+  let streak = 0;
+  let event = null;
+  let maxAcceleration = 0;
+  let maxBraking = 0;
+  const finishEvent = () => {
+    if (event) events.push(event);
+    event = null;
+  };
+  for (let i = 1; i < points.length; i++) {
+    const point = points[i];
+    const previous = points[i - 1];
+    const elapsedSec = Number(point.sec) - Number(previous.sec);
+    const hasSpeed =
+      !point.break_before &&
+      point.speed != null &&
+      previous.speed != null &&
+      Number.isFinite(Number(point.speed)) &&
+      Number.isFinite(Number(previous.speed)) &&
+      Number.isFinite(elapsedSec) &&
+      elapsedSec > 0;
+    const acceleration = hasSpeed
+      ? (Number(point.speed) - Number(previous.speed)) / elapsedSec
+      : null;
+    const nextDirection =
+      acceleration != null && acceleration > LIVE_ACCELERATION_THRESHOLD
+        ? 1
+        : acceleration != null && acceleration < -LIVE_ACCELERATION_THRESHOLD
+          ? -1
+          : 0;
+    if (!nextDirection) {
+      finishEvent();
+      direction = 0;
+      streak = 0;
+      continue;
+    }
+    if (nextDirection !== direction) {
+      finishEvent();
+      direction = nextDirection;
+      streak = 0;
+    }
+    streak++;
+    const absoluteAcceleration = Math.abs(acceleration);
+    if (direction > 0) maxAcceleration = Math.max(maxAcceleration, absoluteAcceleration);
+    else maxBraking = Math.max(maxBraking, absoluteAcceleration);
+    if (streak === 3) {
+      event = {
+        type: direction > 0 ? 'acceleration' : 'braking',
+        start_offset_sec: Number(points[i - 2].sec),
+        end_offset_sec: Number(point.sec),
+        max_kmh_s: absoluteAcceleration,
+      };
+    } else if (streak > 3 && event) {
+      event.end_offset_sec = Number(point.sec);
+      event.max_kmh_s = Math.max(event.max_kmh_s, absoluteAcceleration);
+    }
+  }
+  finishEvent();
+  const currentPoint = points[Math.min(liveIndex, points.length - 1)];
+  const recentPoints = points
+    .slice(Math.max(0, liveIndex - 19), liveIndex + 1)
+    .map((point) => liveAiPoint(point, point.sec));
+  const qualifyingEvents = events.filter((item) => item.type);
+  return {
+    threshold_kmh_s: LIVE_ACCELERATION_THRESHOLD,
+    current: liveAiPoint(currentPoint, currentPoint.sec),
+    recent_points: recentPoints,
+    trip_summary: {
+      observations: points.length,
+      acceleration_events: qualifyingEvents.filter((item) => item.type === 'acceleration').length,
+      braking_events: qualifyingEvents.filter((item) => item.type === 'braking').length,
+      max_acceleration_kmh_s: maxAcceleration,
+      max_braking_kmh_s: maxBraking,
+      recent_events: qualifyingEvents.slice(-10),
+    },
+  };
+}
+async function refreshLiveAiStatus() {
+  try {
+    const { configured, model } = await get('/api/ai/status');
+    $('liveAiStatus').textContent = configured
+      ? `Gemini 已設定 · ${model}`
+      : `尚未設定 GEMINI_API_KEY · ${model}`;
+    $('liveAiStatus').classList.toggle('ready', configured);
+  } catch (e) {
+    $('liveAiStatus').textContent = `模型狀態讀取失敗：${e.message}`;
+  }
+}
+async function submitLiveAiQuestion(event) {
+  event.preventDefault();
+  const input = $('liveAiInput');
+  const question = input.value.trim();
+  if (!question || liveAiSending) return;
+  if (!current || !current.points.length) {
+    appendLiveAiMessage('assistant', '目前沒有可分析的行程資料，請先選取一趟行程。');
+    return;
+  }
+  appendLiveAiMessage('user', question);
+  input.value = '';
+  input.disabled = true;
+  $('liveAiSend').disabled = true;
+  liveAiSending = true;
+  const requestNumber = ++liveAiRequestNumber;
+  const pending = appendLiveAiMessage('assistant', '正在分析感測器資料…');
+  try {
+    const response = await fetch('/api/ai/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: question,
+        history: liveAiHistory.slice(-8),
+        sensor_context: buildLiveAiSensorContext(),
+      }),
+    });
+    const result = await response.json();
+    if (!response.ok) throw Error(result.error || `AI 請求失敗 (${response.status})`);
+    if (requestNumber !== liveAiRequestNumber) return;
+    pending.textContent = result.answer;
+    liveAiHistory.push(
+      { role: 'user', content: question },
+      { role: 'assistant', content: result.answer },
+    );
+    liveAiHistory = liveAiHistory.slice(-12);
+  } catch (e) {
+    if (requestNumber === liveAiRequestNumber) {
+      pending.textContent = `無法取得 AI 回覆：${e.message}`;
+      pending.classList.add('error');
+    }
+  } finally {
+    if (requestNumber === liveAiRequestNumber) {
+      input.disabled = false;
+      $('liveAiSend').disabled = false;
+      liveAiSending = false;
+      if (document.activeElement !== input) input.focus();
+    }
+  }
+}
 function error(e) {
   $('error').textContent = e.message || String(e);
   $('error').hidden = false;
@@ -66,6 +252,8 @@ function withinDate(t) {
 }
 function setTab(name) {
   activeTab = name;
+  document.body.classList.toggle('live-mode', name === 'live');
+  $('cards').hidden = name === 'live';
   document
     .querySelectorAll('.tab')
     .forEach((e) => (e.hidden = e.id !== name || (name !== 'fleet' && !current)));
@@ -74,10 +262,11 @@ function setTab(name) {
     .forEach((e) => e.classList.toggle('active', e.dataset.tab === name));
   $('title').textContent = document
     .querySelector(`nav [data-tab="${name}"]`)
-    .textContent.slice(3)
+    .textContent
     .trim();
   setTimeout(() => {
     if (map) map.invalidateSize();
+    if (liveMap) liveMap.invalidateSize();
     document
       .querySelectorAll('.tab:not([hidden]) .js-plotly-plot')
       .forEach((e) => Plotly.Plots.resize(e));
@@ -102,6 +291,14 @@ function fillJourneys() {
   return rows;
 }
 async function loadSelected() {
+  stopLiveMission();
+  liveAiRequestNumber++;
+  liveAiSending = false;
+  $('liveAiInput').disabled = false;
+  $('liveAiSend').disabled = false;
+  liveAiHistory = [];
+  $('liveAiMessages').innerHTML =
+    '<p class="live-ai-message assistant">你好！我可以根據目前行程的感測器資料，協助分析急加速、急煞車與行駛狀況。</p>';
   const id = Number($('journey').value);
   if (!id) {
     ++requestNumber;
@@ -134,8 +331,8 @@ async function loadSelected() {
     $('subtitle').textContent = `${t.plate} · ${t.vehicle} · ${t.journey} ｜ ${s.start} → ${s.end}`;
     $('download').href = `/api/export?id=${id}`;
     $('cards').innerHTML =
-      card('本趟行駛距離', fmt(s.distance_km, 2), 'km', '累積里程差') +
-      card('本趟耗油', fmt(s.fuel_l, 2), 'L', '累積燃油差') +
+      card('本趟行駛距離', fmt(s.distance_km, 2), 'km') +
+      card('本趟耗油', fmt(s.fuel_l, 2), 'L') +
       card('百公里油耗', fmt(s.l100, 2), 'L/100km') +
       card('行程歷時', fmt(s.duration_sec / 60, 1), 'min') +
       card('停車引擎運轉', fmt(s.idle_sec / 60, 1), 'min', `占可判讀時間 ${fmt(s.idle_pct)}%`);
@@ -243,6 +440,220 @@ function renderMap() {
         .on('click', () => updateCursor(s.index));
   });
 }
+function ensureLiveMap() {
+  if (!window.L) {
+    error(Error('地圖函式庫載入失敗，請確認能連線 unpkg.com。'));
+    return false;
+  }
+  if (!liveMap) {
+    liveMap = L.map('liveMap', { preferCanvas: true }).setView([23.6, 121], 7);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    }).addTo(liveMap);
+    liveRouteLayer = L.layerGroup().addTo(liveMap);
+  }
+  liveRouteLayer.clearLayers();
+  liveSegment = null;
+  liveMarker = null;
+  const positions = current.points.filter(validPos).map((p) => [p.lat, p.lon]);
+  if (positions.length) {
+    liveMap.fitBounds(L.latLngBounds(positions), { padding: [30, 30], maxZoom: 15 });
+  }
+  return true;
+}
+function resetLiveEcoAlert() {
+  liveAccelerationDirection = 0;
+  liveAccelerationStreak = 0;
+  liveEcoAlertDirection = 0;
+  liveEcoAlertRemaining = 0;
+  $('liveEcoAlert').hidden = true;
+  $('liveEcoAlert').textContent = '';
+}
+function updateLiveEcoAlert(point, previous) {
+  const alert = $('liveEcoAlert');
+  if (liveEcoAlertRemaining > 0) {
+    liveEcoAlertRemaining--;
+    if (liveEcoAlertRemaining === 0) {
+      alert.hidden = true;
+      liveEcoAlertDirection = 0;
+    }
+  }
+  const elapsedSec = previous ? point.sec - previous.sec : 0;
+  const validSpeed =
+    previous &&
+    !point.break_before &&
+    point.speed != null &&
+    previous.speed != null &&
+    Number.isFinite(Number(point.speed)) &&
+    Number.isFinite(Number(previous.speed)) &&
+    Number.isFinite(elapsedSec) &&
+    elapsedSec > 0;
+  const acceleration = validSpeed
+    ? (Number(point.speed) - Number(previous.speed)) / elapsedSec
+    : null;
+  const direction =
+    acceleration == null
+      ? 0
+      : acceleration > LIVE_ACCELERATION_THRESHOLD
+        ? 1
+        : acceleration < -LIVE_ACCELERATION_THRESHOLD
+          ? -1
+          : 0;
+  if (!direction) {
+    liveAccelerationDirection = 0;
+    liveAccelerationStreak = 0;
+    return;
+  }
+  if (direction === liveAccelerationDirection) {
+    liveAccelerationStreak++;
+  } else {
+    liveAccelerationDirection = direction;
+    liveAccelerationStreak = 1;
+    liveEcoAlertDirection = 0;
+  }
+  if (liveAccelerationStreak < 3 || liveEcoAlertDirection === direction) return;
+  alert.textContent =
+    direction > 0
+      ? '省油提醒：請平順踩油門，避免急加速。'
+      : '省油提醒：請平順踩煞車，避免急煞車。';
+  alert.hidden = false;
+  liveEcoAlertDirection = direction;
+  liveEcoAlertRemaining = 6;
+}
+function renderLivePoint(index) {
+  const p = current.points[index],
+    previous = index > 0 ? current.points[index - 1] : null;
+  updateLiveEcoAlert(p, previous);
+  const values = [
+    ['車速', p.speed, 'km/h', 1, 'speed'],
+    ['引擎轉速', p.rpm, 'rpm', 0, 'rpm'],
+    ['引擎負載', p.load, '%', 1, 'load'],
+    ['冷卻水溫', p.temp, '°C', 1, 'temp'],
+    ['電瓶電壓', p.battery, 'V', 2, 'battery'],
+    ['油箱油量', p.fuel_level, '%', 1, 'fuel_level'],
+    ['累積里程', p.distance, 'km', 2, 'distance'],
+    ['累積耗油', p.used, 'L', 2, 'used'],
+  ];
+  $('liveSensors').innerHTML = values
+    .map(
+      ([label, value, unit, decimals, key]) => {
+        const previousValue = previous ? previous[key] : null;
+        const elapsedSec = previous ? p.sec - previous.sec : 0;
+        const comparable =
+          value != null &&
+          previousValue != null &&
+          Number.isFinite(Number(value)) &&
+          Number.isFinite(Number(previousValue)) &&
+          Number.isFinite(elapsedSec) &&
+          elapsedSec > 0;
+        const delta = comparable ? Number(value) - Number(previousValue) : null;
+        const percentChange =
+          delta == null || Number(previousValue) === 0
+            ? null
+            : (delta / Math.abs(Number(previousValue))) * 100;
+        const trendClass =
+          percentChange == null ? '' : percentChange > 0 ? 'increase' : percentChange < 0 ? 'decrease' : 'steady';
+        const arrow =
+          percentChange == null ? '' : percentChange > 0 ? '▲' : percentChange < 0 ? '▼' : '→';
+        const rate =
+          percentChange == null
+            ? '—'
+            : `<span class="live-change-arrow" aria-hidden="true">${arrow}</span> ${fmt(Math.abs(percentChange), 1)}%`;
+        return `<div class="live-sensor"><span>${esc(label)}</span><strong>${fmt(value, decimals)} <small>${esc(unit)}</small></strong><div class="live-sensor-change"><small class="live-change-value ${trendClass}">${rate}</small></div></div>`;
+      },
+    )
+    .join('');
+  $('liveTimestamp').textContent = `${p.time} · 觀測點 ${index + 1}`;
+  $('liveProgressBar').style.width = `${((index + 1) / current.points.length) * 100}%`;
+  if (!validPos(p)) {
+    liveSegment = null;
+    return;
+  }
+  if (!liveSegment || p.break_before || (previous && !validPos(previous))) {
+    liveSegment = L.polyline([], { color: '#297a72', weight: 5, opacity: 0.9 }).addTo(
+      liveRouteLayer,
+    );
+  }
+  liveSegment.addLatLng([p.lat, p.lon]);
+  if (!liveMarker) {
+    liveMarker = L.circleMarker([p.lat, p.lon], {
+      radius: 9,
+      color: '#102e37',
+      weight: 3,
+      fillColor: '#ffffff',
+      fillOpacity: 1,
+    }).addTo(liveMap);
+  } else {
+    liveMarker.setLatLng([p.lat, p.lon]);
+  }
+  liveMap.panTo([p.lat, p.lon], { animate: false });
+}
+function setLiveRunning(running, status) {
+  liveRunning = running;
+  $('liveStatus').textContent = status;
+  $('liveStatus').classList.toggle('running', running);
+  $('liveToggle').textContent = running
+    ? '❚❚ 暫停任務'
+    : liveActive
+      ? '▶ 繼續任務'
+      : '↻ 重新開始';
+  $('liveStop').disabled = !liveActive;
+  document.querySelector('.sensor-pulse').classList.toggle('running', running);
+}
+function startLiveMission() {
+  if (!current || !current.points.length) {
+    const message = '目前沒有可重播的行程資料，請先選取一趟行程。';
+    $('liveStatus').textContent = '無行程資料';
+    error(Error(message));
+    return;
+  }
+  if (liveActive) {
+    if (!liveRunning) {
+      setLiveRunning(true, '模擬重播中');
+      liveTimer = setInterval(advanceLiveMission, 500);
+    }
+    return;
+  }
+  $('error').hidden = true;
+  try {
+    resetLiveEcoAlert();
+    if (!ensureLiveMap()) {
+      $('liveStatus').textContent = '地圖無法啟動';
+      return;
+    }
+    liveActive = true;
+    liveIndex = 0;
+    $('liveTrip').textContent = `${current.vehicle} · ${current.journey}`;
+    renderLivePoint(liveIndex);
+    setLiveRunning(true, '模擬重播中');
+    liveTimer = setInterval(advanceLiveMission, 500);
+  } catch (e) {
+    stopLiveMission();
+    $('liveStatus').textContent = '啟動失敗';
+    error(e);
+  }
+}
+function advanceLiveMission() {
+  if (liveIndex >= current.points.length - 1) {
+    clearInterval(liveTimer);
+    liveTimer = null;
+    liveActive = false;
+    setLiveRunning(false, '重播完成');
+    return;
+  }
+  liveIndex++;
+  renderLivePoint(liveIndex);
+}
+function stopLiveMission() {
+  if (liveTimer) clearInterval(liveTimer);
+  liveTimer = null;
+  resetLiveEcoAlert();
+  if (!liveActive && !liveRunning) return;
+  liveActive = false;
+  setLiveRunning(false, '任務已結束');
+}
 function updateCursor(i) {
   if (!current) return;
   i = Math.min(current.points.length - 1, Math.max(0, Number(i)));
@@ -273,7 +684,7 @@ function updateCursor(i) {
     else cursorMarker.setLatLng([p.lat, p.lon]);
     cursorMarker.setStyle({ opacity: 1, fillOpacity: 1 });
   } else if (cursorMarker) cursorMarker.setStyle({ opacity: 0, fillOpacity: 0 });
-  if (window.Plotly && $('timeline').data)
+  if (window.Plotly && $('timeline').data) {
     Plotly.relayout('timeline', {
       shapes: [
         {
@@ -288,6 +699,7 @@ function updateCursor(i) {
         },
       ],
     });
+  }
 }
 function hookChart(id) {
   const el = $(id);
@@ -546,40 +958,233 @@ function hav(a, b, c, d) {
     )
   );
 }
-function renderCompare() {
-  const s = current.summary,
-    r = Number($('odRadius').value);
-  peers = catalog.trips.filter(
-    (t) =>
-      t.vehicle === current.vehicle &&
-      withinDate(t) &&
-      hav(s.start_lat, s.start_lon, t.start_lat, t.start_lon) <= r &&
-      hav(s.end_lat, s.end_lon, t.end_lat, t.end_lon) <= r,
+function comparisonTimestamp(value) {
+  if (typeof value !== 'string') return null;
+  const match = value.trim().match(
+    /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,6}))?(Z|[+-]\d{2}:\d{2})?$/i,
   );
-  const ref = peers.filter((t) => t.id !== tripId && t.fuel_l != null);
-  const vals = ref.map((t) => t.fuel_l).sort((a, b) => a - b),
-    n = vals.length,
-    median = n ? (vals[Math.floor((n - 1) / 2)] + vals[Math.floor(n / 2)]) / 2 : null;
+  if (!match) return null;
+  const [, year, month, day, hour, minute, second, fraction = '', zone = ''] = match;
+  const parts = [year, month, day, hour, minute, second].map(Number);
+  const localTimestamp =
+    Date.UTC(parts[0], parts[1] - 1, parts[2], parts[3], parts[4], parts[5]) +
+    (fraction ? Number(`0.${fraction}`) * 1000 : 0);
+  const check = new Date(localTimestamp);
+  if (
+    check.getUTCFullYear() !== parts[0] ||
+    check.getUTCMonth() !== parts[1] - 1 ||
+    check.getUTCDate() !== parts[2] ||
+    check.getUTCHours() !== parts[3] ||
+    check.getUTCMinutes() !== parts[4] ||
+    check.getUTCSeconds() !== parts[5]
+  )
+    return null;
+  if (!zone || zone.toUpperCase() === 'Z') return localTimestamp;
+  const offsetMatch = zone.match(/^([+-])(\d{2}):(\d{2})$/);
+  if (!offsetMatch || Number(offsetMatch[2]) > 23 || Number(offsetMatch[3]) > 59) return null;
+  const offsetMinutes = Number(offsetMatch[2]) * 60 + Number(offsetMatch[3]);
+  return localTimestamp - (offsetMatch[1] === '+' ? 1 : -1) * offsetMinutes * 60_000;
+}
+function hasValidTripEconomy(trip) {
+  return (
+    Number.isFinite(trip.distance_km) &&
+    trip.distance_km > 0 &&
+    Number.isFinite(trip.fuel_l) &&
+    trip.fuel_l >= 0 &&
+    Number.isFinite(trip.l100) &&
+    trip.l100 >= 0
+  );
+}
+function isHistoricalReference(trip, selectedTripId, selectedStart) {
+  if (trip.id === selectedTripId) return false;
+  const tripStart = comparisonTimestamp(trip.start);
+  const tripEnd = comparisonTimestamp(trip.end);
+  return (
+    selectedStart != null &&
+    tripStart != null &&
+    tripEnd != null &&
+    tripStart <= tripEnd &&
+    tripEnd < selectedStart &&
+    hasValidTripEconomy(trip)
+  );
+}
+function percentileLinear(values, probability) {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const position = (sorted.length - 1) * probability;
+  const lower = Math.floor(position);
+  const upper = Math.ceil(position);
+  // Use linear interpolation between adjacent sorted values, consistent for Q1, median, and Q3.
+  return sorted[lower] + (sorted[upper] - sorted[lower]) * (position - lower);
+}
+function summarizeComparison(values, currentL100) {
+  const n = values.length;
+  const median = percentileLinear(values, 0.5);
+  const rawDifference =
+    n >= MIN_COMPARE_REFERENCE_TRIPS &&
+    Number.isFinite(currentL100) &&
+    median > 0
+      ? (currentL100 / median - 1) * 100
+      : null;
+  return {
+    n,
+    median,
+    q1: percentileLinear(values, 0.25),
+    q3: percentileLinear(values, 0.75),
+    difference: Number.isFinite(rawDifference) ? rawDifference : null,
+  };
+}
+function comparisonStatusMessage(currentValid, n, median, difference, reason) {
+  if (!currentValid) return `本趟資料不足，無法比較：${reason}`;
+  if (n < MIN_COMPARE_REFERENCE_TRIPS)
+    return `參考資料不足：目前有 ${n} 趟有效歷史行程；少於 ${MIN_COMPARE_REFERENCE_TRIPS} 趟，不顯示相對差異。`;
+  if (median === 0) return '歷史中位數為 0 L/100 km，無法計算本趟相對差異。';
+  if (!Number.isFinite(difference)) return '無法計算本趟相對差異。';
+  if (difference === 0) return '本趟與歷史中位數相同（0.0%）。';
+  return `本趟${difference > 0 ? '高於' : '低於'}歷史中位數 ${fmt(Math.abs(difference), 1)}%。`;
+}
+function comparisonFailureReason() {
+  const summary = current.summary;
+  const quality = current.quality;
+  const points = current.points;
+  const reasons = [];
+  if (quality.fuel_reset) reasons.push('累積耗油計數器倒退');
+  else if (
+    !Number.isFinite(summary.fuel_l) &&
+    (!Number.isFinite(points[0]?.fuel) || !Number.isFinite(points.at(-1)?.fuel))
+  )
+    reasons.push('累積耗油首末值缺失或未通過 CAN 品質判斷');
+  if (quality.odo_reset) reasons.push('累積里程計數器倒退');
+  else if (
+    !Number.isFinite(summary.distance_km) &&
+    (!Number.isFinite(points[0]?.odo) || !Number.isFinite(points.at(-1)?.odo))
+  )
+    reasons.push('累積里程首末值缺失或未通過 CAN 品質判斷');
+  if (Number.isFinite(summary.distance_km) && summary.distance_km <= 0)
+    reasons.push('有效行駛距離未大於 0');
+  if (Number.isFinite(summary.fuel_l) && summary.fuel_l < 0)
+    reasons.push('有效累積耗油差小於 0');
+  if (!reasons.length) reasons.push('既有油耗或里程品質判斷未提供有效指標');
+  return reasons.join('；');
+}
+function compareCandidateStatus(trip, selectedStart) {
+  if (trip.id === tripId) return '本趟，不納入基準';
+  const tripStart = comparisonTimestamp(trip.start);
+  const tripEnd = comparisonTimestamp(trip.end);
+  if (selectedStart == null || tripStart == null || tripEnd == null || tripStart > tripEnd)
+    return '時間缺失或無法比較';
+  if (tripEnd >= selectedStart) return '非本趟之前的歷史行程';
+  if (!hasValidTripEconomy(trip)) return '油耗／里程指標無效';
+  return '納入歷史基準';
+}
+function renderCompare() {
+  const s = current.summary;
+  const radius = Number($('odRadius').value);
+  const selectedStart = comparisonTimestamp(s.start);
+  peers = catalog.trips
+    .filter(
+      (t) =>
+        t.vehicle === current.vehicle &&
+        typeof t.start === 'string' &&
+        withinDate(t) &&
+        hav(s.start_lat, s.start_lon, t.start_lat, t.start_lon) <= radius &&
+        hav(s.end_lat, s.end_lon, t.end_lat, t.end_lon) <= radius,
+    )
+    .sort((a, b) => String(b.start).localeCompare(String(a.start)));
+  const references = peers.filter((t) => isHistoricalReference(t, tripId, selectedStart));
+  const values = references.map((t) => t.l100);
+  const currentValid = hasValidTripEconomy(s);
+  const { n, median, q1, q3, difference } = summarizeComparison(
+    values,
+    currentValid ? s.l100 : null,
+  );
+  const dateFrom = $('dateFrom').value || '不限';
+  const dateTo = $('dateTo').value || '不限';
+  const historyTimeNote =
+    selectedStart == null
+      ? '本趟開始時間無法可靠比較，不建立歷史基準。'
+      : '只使用結束時間早於本趟開始時間的歷史行程。';
   $('peerNote').textContent =
-    `符合OD ${peers.length} 趟；排除本趟後有效耗油樣本 ${n} 趟，中位耗油 ${fmt(median, 2)} L。比較僅描述歷史差異；載重、工作目的與中途路線未控制，不代表節油效果。`;
+    `同一車輛：${current.vehicle} · 起終點篩選半徑：${radius.toLocaleString('zh-TW')} m · 日期範圍：${dateFrom} 至 ${dateTo} · ${historyTimeNote}`;
+  $('compareSummary').innerHTML =
+    card('本趟油耗', fmt(currentValid ? s.l100 : null, 2), 'L/100 km') +
+    card('有效歷史參考行程', n, '趟', `介面參考門檻 ${MIN_COMPARE_REFERENCE_TRIPS} 趟`) +
+    card('歷史中位數', fmt(median, 2), 'L/100 km') +
+    card('歷史四分位範圍', n ? `${fmt(q1, 2)}–${fmt(q3, 2)}` : '—', 'L/100 km');
+  $('compareStatus').textContent = comparisonStatusMessage(
+    currentValid,
+    n,
+    median,
+    difference,
+    currentValid ? '' : comparisonFailureReason(),
+  );
+  const currentPoint = currentValid ? [s] : [];
+  const chartData = [
+    {
+      type: 'scatter',
+      mode: 'markers',
+      name: '有效歷史參考行程',
+      x: references.map((t) => (Number.isFinite(t.idle_sec) ? t.idle_sec / 60 : null)),
+      y: references.map((t) => t.l100),
+      text: references.map((t) => `${t.journey} · 納入歷史基準`),
+      customdata: references.map((t) => t.id),
+      marker: { color: '#718391', size: 8 },
+      hovertemplate:
+        '%{text}<br>停車引擎運轉 %{x:.1f} 分鐘<br>油耗 %{y:.2f} L/100 km<extra></extra>',
+    },
+    {
+      type: 'scatter',
+      mode: 'markers',
+      name: '本趟（不納入基準）',
+      x: currentPoint.map((t) => (Number.isFinite(t.idle_sec) ? t.idle_sec / 60 : null)),
+      y: currentPoint.map((t) => t.l100),
+      text: currentPoint.map(() => `${current.journey} · 本趟，不納入基準`),
+      customdata: currentPoint.map(() => tripId),
+      marker: { color: '#b9853d', size: 13, symbol: 'diamond' },
+      hovertemplate:
+        '%{text}<br>停車引擎運轉 %{x:.1f} 分鐘<br>油耗 %{y:.2f} L/100 km<extra></extra>',
+    },
+  ];
   drawPlot(
     'compareChart',
-    [
-      {
-        type: 'scatter',
-        mode: 'markers',
-        x: peers.map((t) => t.idle_sec / 60),
-        y: peers.map((t) => t.fuel_l),
-        text: peers.map((t) => t.journey),
-        customdata: peers.map((t) => t.id),
-        marker: {
-          color: peers.map((t) => (t.id === tripId ? '#b9853d' : '#718391')),
-          size: peers.map((t) => (t.id === tripId ? 13 : 8)),
-        },
-        hovertemplate: '%{text}<br>停車引擎運轉 %{x:.1f} 分<br>耗油 %{y:.2f} L<extra></extra>',
-      },
-    ],
-    { xaxis: { title: '停車引擎運轉（分鐘）' }, yaxis: { title: '本趟耗油（L）' } },
+    chartData,
+    {
+      showlegend: true,
+      legend: { orientation: 'h', y: 1.13 },
+      xaxis: { title: '停車引擎運轉時間（分鐘）' },
+      yaxis: { title: '每百公里耗油（L/100 km）' },
+      shapes:
+        median == null
+          ? []
+          : [
+              {
+                type: 'line',
+                xref: 'paper',
+                x0: 0,
+                x1: 1,
+                yref: 'y',
+                y0: median,
+                y1: median,
+                line: { color: '#b9853d', width: 2, dash: 'dash' },
+              },
+            ],
+      annotations:
+        median == null
+          ? []
+          : [
+              {
+                xref: 'paper',
+                x: 0.99,
+                yref: 'y',
+                y: median,
+                text: `歷史中位數 ${fmt(median, 2)}（${n} 趟）`,
+                showarrow: false,
+                xanchor: 'right',
+                yshift: 10,
+                bgcolor: 'rgba(255,255,255,0.8)',
+              },
+            ],
+    },
   ).then(() => {
     const el = $('compareChart');
     if (el.on) {
@@ -589,12 +1194,12 @@ function renderCompare() {
   });
   table(
     'peerTable',
-    ['行程', '開始', '距離 km', '耗油 L', 'L/100km', '停車引擎運轉 min'],
-    peers.map((t) => tripRow(t)),
+    ['行程', '開始', '距離 km', '耗油 L', 'L/100 km', '基準狀態', '停車引擎運轉 min'],
+    peers.map((t) => tripRow(t, compareCandidateStatus(t, selectedStart))),
   );
 }
-function tripRow(t) {
-  return `<tr data-id="${t.id}"><td>${esc(t.journey)}</td><td>${esc(t.start)}</td><td>${fmt(t.distance_km, 2)}</td><td>${fmt(t.fuel_l, 2)}</td><td>${fmt(t.l100, 2)}</td><td>${fmt(t.idle_sec / 60)}</td></tr>`;
+function tripRow(t, comparisonStatus) {
+  return `<tr data-id="${t.id}"><td>${esc(t.journey)}</td><td>${esc(t.start)}</td><td>${fmt(t.distance_km, 2)}</td><td>${fmt(t.fuel_l, 2)}</td><td>${fmt(t.l100, 2)}</td><td>${esc(comparisonStatus)}</td><td>${fmt(Number.isFinite(t.idle_sec) ? t.idle_sec / 60 : null)}</td></tr>`;
 }
 function renderFleet() {
   const all = catalog.trips.filter(withinDate),
@@ -677,6 +1282,7 @@ function stopPlay() {
   $('play').textContent = '▶ 逐筆播放';
 }
 async function init() {
+  refreshLiveAiStatus();
   try {
     catalog = await get('/api/catalog');
     const v = new Map();
@@ -715,7 +1321,31 @@ $('refresh').onclick = () => {
   renderFleet();
   loadSelected();
 };
-document.querySelectorAll('nav button').forEach((b) => (b.onclick = () => setTab(b.dataset.tab)));
+document.querySelectorAll('nav button').forEach((b) => {
+  b.onclick = () => {
+    if (b.dataset.tab === 'live' && activeTab !== 'live') liveReturnTab = activeTab;
+    setTab(b.dataset.tab);
+    if (b.dataset.tab === 'live') startLiveMission();
+  };
+});
+$('liveBack').onclick = () => setTab(liveReturnTab);
+$('liveToggle').onclick = () => {
+  if (liveRunning) {
+    clearInterval(liveTimer);
+    liveTimer = null;
+    setLiveRunning(false, '重播已暫停');
+  } else {
+    startLiveMission();
+  }
+};
+$('liveStop').onclick = stopLiveMission;
+$('liveAiForm').addEventListener('submit', submitLiveAiQuestion);
+$('liveAiInput').addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' && !event.shiftKey) {
+    event.preventDefault();
+    $('liveAiForm').requestSubmit();
+  }
+});
 $('cursor').oninput = (e) => {
   stopPlay();
   updateCursor(e.target.value);
