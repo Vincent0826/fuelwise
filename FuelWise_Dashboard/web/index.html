@@ -162,6 +162,37 @@
       </section>
 
       <section id="trip" class="tab">
+        <div class="panel fuel-model-panel">
+          <div class="panelhead">
+            <div>
+              <p class="eyebrow">POST-TRIP MODEL ANALYSIS</p>
+              <h2>AI 油耗估計與解釋</h2>
+            </div>
+            <span id="fuelModelBadge" class="badge" hidden></span>
+          </div>
+          <p class="muted">根據已完成行程的資料估計油耗。</p>
+          <p class="muted">特徵貢獻解釋模型判斷，不代表因果或保證可節省的油量。</p>
+          <p id="fuelModelStatus" class="notice" role="status" aria-live="polite">
+            選取行程後載入模型估計。
+          </p>
+          <div id="fuelModelContent" hidden>
+            <div id="fuelModelCards" class="cards fuel-model-cards"></div>
+            <p id="fuelModelWarning" class="notice warn" hidden></p>
+            <div class="fuel-model-chart-heading">
+              <div>
+                <h3>本趟特徵貢獻</h3>
+                <p id="fuelModelChartSummary" class="muted"></p>
+              </div>
+            </div>
+            <div id="fuelModelChart" class="chart tall"></div>
+            <div id="fuelModelFeatureList" class="tablewrap"></div>
+            <details id="fuelModelDetails" class="fuel-model-details">
+              <summary>模型版本、評估成績與適用限制</summary>
+              <div id="fuelModelDetailsBody"></div>
+            </details>
+          </div>
+        </div>
+
         <div class="split">
           <div class="panel">
             <div class="panelhead">

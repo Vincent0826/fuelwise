@@ -22,6 +22,8 @@ let catalog,
   cursorIndex = 0,
   playing = null,
   requestNumber = 0,
+  fuelModelRequestNumber = 0,
+  activeFuelModel = null,
   activeTab = 'trip',
   liveReturnTab = 'trip';
 let peers = [],
@@ -240,6 +242,231 @@ function error(e) {
 function card(title, value, unit = '', note = '') {
   return `<div class="card"><span>${esc(title)}</span><strong>${value} <small>${esc(unit)}</small></strong><small>${esc(note)}</small></div>`;
 }
+function clearFuelModel(message, warning = false) {
+  activeFuelModel = null;
+  $('fuelModelContent').hidden = true;
+  $('fuelModelBadge').hidden = true;
+  $('fuelModelCards').innerHTML = '';
+  $('fuelModelWarning').hidden = true;
+  $('fuelModelWarning').textContent = '';
+  $('fuelModelFeatureList').innerHTML = '';
+  $('fuelModelDetailsBody').innerHTML = '';
+  if (window.Plotly) Plotly.purge('fuelModelChart');
+  $('fuelModelStatus').className = warning ? 'notice warn' : 'notice';
+  $('fuelModelStatus').textContent = message;
+  $('fuelModelStatus').hidden = !message;
+}
+function renderFuelModelDetails(data) {
+  const model = data.model,
+    comparisons = model.validation_comparison_mae_l_per_100km || {},
+    validationMetric = model.validation_metrics.l_per_100km || {},
+    methodName =
+      model.method === 'history_xgboost'
+        ? '車輛歷史特徵 XGBoost'
+        : model.method === 'total_fuel_xgboost'
+          ? '總耗油目標 XGBoost'
+          : model.method;
+  const splitName = {
+    train: '訓練集',
+    validation: '驗證集',
+    test: '測試集追蹤評估',
+    other: '實驗樣本以外',
+  }[data.data_split] || data.data_split;
+  const sourceName = {
+    saved_trip_features: '已保存的逐趟特徵（依資料分組建構歷史）',
+    frozen_training_history: '凍結的訓練集歷史統計',
+  }[data.feature_source] || data.feature_source;
+  const validationRows = Object.entries(comparisons)
+    .map(
+      ([name, value]) =>
+        `<tr><td>${esc(name)}</td><td>${fmt(value, 3)} L/100 km</td></tr>`,
+    )
+    .join('');
+  const vehicleRows = (validationMetric.per_vehicle || [])
+    .map(
+      (row) =>
+        `<tr><td>${esc(row.vehicle)}</td><td>${fmt(row.sample_count, 0)}</td><td>${fmt(row.mae, 3)} L/100 km</td></tr>`,
+    )
+    .join('');
+  const testMetric = model.test_follow_up_metrics?.l_per_100km;
+  const limitations = data.limitations
+    .map((item) => `<li>${esc(item)}</li>`)
+    .join('');
+  $('fuelModelDetailsBody').innerHTML = `
+    <dl class="fuel-model-meta">
+      <dt>目前展示模型</dt><dd>${esc(methodName)}（實驗模型）</dd>
+      <dt>模型版本</dt><dd>XGBoost ${esc(model.xgboost_version)}；使用 ${fmt(model.tree_count, 0)} 棵樹</dd>
+      <dt>訓練目標</dt><dd>${model.target === 'fuel_l' ? '整趟耗油（L）' : '平均油耗（L/100 km）'}</dd>
+      <dt>目前行程分組</dt><dd>${esc(splitName)}</dd>
+      <dt>歷史特徵來源</dt><dd>${esc(sourceName)}</dd>
+      <dt>驗證集選擇理由</dt><dd>${esc(model.selection_reason)}</dd>
+      <dt>驗證集評估</dt><dd>${fmt(validationMetric.n, 0)} 趟；MAE ${fmt(validationMetric.mae, 3)}、RMSE ${fmt(validationMetric.rmse, 3)}、R² ${fmt(validationMetric.r2, 3)}；各車 MAE 等權平均 ${fmt(validationMetric.equal_weight_vehicle_mae, 3)} L/100 km</dd>
+      <dt>驗證絕對誤差</dt><dd>中位數 ${fmt(validationMetric.median_absolute_error, 3)}；P90 ${fmt(validationMetric.p90_absolute_error, 3)} L/100 km</dd>
+      <dt>測試追蹤 MAE</dt><dd>${testMetric ? `${fmt(testMetric.mae, 3)} L/100 km（${fmt(testMetric.n, 0)} 趟）` : '未提供'}</dd>
+      <dt>SHAP 解釋</dt><dd>${esc(data.explanation.method)}；${esc(data.explanation.background)}</dd>
+    </dl>
+    <h4>驗證集 MAE 對照</h4>
+    <div class="tablewrap"><table><thead><tr><th>方法</th><th>MAE</th></tr></thead><tbody>${validationRows}</tbody></table></div>
+    <h4>驗證集各車 MAE</h4>
+    <div class="tablewrap"><table><thead><tr><th>車輛</th><th>行程數</th><th>MAE</th></tr></thead><tbody>${vehicleRows}</tbody></table></div>
+    <ul>${limitations}</ul>`;
+}
+async function renderFuelModel(data, tripRequest, modelRequest) {
+  if (
+    modelRequest !== fuelModelRequestNumber ||
+    tripRequest !== requestNumber ||
+    Number($('journey').value) !== tripId
+  ) {
+    return;
+  }
+  const fuelTarget = data.model.target === 'fuel_l',
+    actual = data.actual,
+    estimate = data.estimate,
+    diff = data.estimated_difference,
+    baseline = data.history_baseline.l_per_100km,
+    actualL100 = actual.l_per_100km,
+    estimateL100 = estimate.l_per_100km,
+    differenceL100 =
+      actualL100 == null || estimateL100 == null
+        ? null
+        : actualL100 - estimateL100;
+  $('fuelModelStatus').hidden = true;
+  $('fuelModelContent').hidden = false;
+  $('fuelModelBadge').hidden = false;
+  $('fuelModelBadge').textContent = '實驗模型';
+  $('fuelModelCards').innerHTML = fuelTarget
+    ? card('實際耗油', fmt(actual.fuel_l, 2), 'L', `實際油耗 ${fmt(actualL100, 2)} L/100 km`) +
+      card('模型估計', fmt(estimate.fuel_l, 2), 'L', `換算 ${fmt(estimateL100, 2)} L/100 km`) +
+      card('估計差異（實際－估計）', fmt(diff.value, 2), 'L', `換算差異 ${fmt(differenceL100, 2)} L/100 km`) +
+      card('歷史中位數基準', fmt(baseline, 2), 'L/100 km', '僅為訓練行程車輛油耗中位數')
+    : card('實際油耗', fmt(actualL100, 2), 'L/100 km', `本趟總耗油 ${fmt(actual.fuel_l, 2)} L`) +
+      card('模型估計', fmt(estimateL100, 2), 'L/100 km', `換算本趟耗油 ${fmt(estimate.fuel_l, 2)} L`) +
+      card('估計差異（實際－估計）', fmt(diff.value, 2), 'L/100 km', `本趟耗油差異 ${fmt(actual.fuel_l == null || estimate.fuel_l == null ? null : actual.fuel_l - estimate.fuel_l, 2)} L`) +
+      card('歷史中位數基準', fmt(baseline, 2), 'L/100 km', '僅為訓練行程車輛油耗中位數');
+
+  const model = data.model,
+    comparison = model.validation_comparison_mae_l_per_100km || {},
+    baselineMae = comparison.vehicle_median_baseline,
+    selectedMae = model.validation_metrics.l_per_100km?.mae,
+    warnings = [...data.warnings];
+  if (selectedMae != null && baselineMae != null && selectedMae >= baselineMae) {
+    warnings.unshift(
+      `目前機器學習模型尚未優於歷史基準：驗證 MAE ${fmt(selectedMae, 3)}，車輛中位數基準 ${fmt(baselineMae, 3)} L/100 km。`,
+    );
+  } else {
+    warnings.unshift(
+      `本次驗證集 MAE 為 ${fmt(selectedMae, 3)}，車輛中位數基準為 ${fmt(baselineMae, 3)} L/100 km；仍屬實驗展示。`,
+    );
+  }
+  $('fuelModelWarning').hidden = false;
+  $('fuelModelWarning').innerHTML = warnings.map(esc).join('<br>');
+  $('fuelModelChartSummary').textContent =
+    `模型解釋起點 ${fmt(data.explanation.base_value, 3)} ${data.explanation.target_unit}；` +
+    `最終估計 ${fmt(data.explanation.prediction, 3)} ${data.explanation.target_unit}。` +
+    '正貢獻推高模型估計，負貢獻降低模型估計。';
+  await renderFuelModelChart(data);
+  if (
+    modelRequest !== fuelModelRequestNumber ||
+    tripRequest !== requestNumber
+  ) {
+    if (
+      activeFuelModel &&
+      activeFuelModel.modelRequest === fuelModelRequestNumber
+    ) {
+      await renderFuelModelChart(activeFuelModel.data);
+    }
+    return;
+  }
+  const items = data.explanation.features;
+  $('fuelModelFeatureList').innerHTML =
+    `<table><thead><tr><th>特徵</th><th>本趟特徵值</th><th>SHAP 貢獻</th><th>模型方向</th></tr></thead><tbody>` +
+    items
+      .map((item) => {
+        const value =
+          item.value == null
+            ? '合併其他特徵'
+            : `${fmt(item.value, 3)} ${esc(item.unit)}`;
+        return `<tr><td>${esc(item.name)}</td><td>${value}</td><td>${fmt(item.shap_value, 3)} ${esc(data.explanation.target_unit)}</td><td>${item.shap_value > 0 ? '推高估計' : item.shap_value < 0 ? '降低估計' : '無明顯改變'}</td></tr>`;
+      })
+      .join('') +
+    '</tbody></table>';
+  renderFuelModelDetails(data);
+}
+async function renderFuelModelChart(data) {
+  const items = data.explanation.features;
+  const labels = [
+    '模型解釋起點',
+    ...items.map((item) => item.name),
+    '模型最終估計',
+  ];
+  const measures = [
+    'absolute',
+    ...items.map(() => 'relative'),
+    'total',
+  ];
+  const values = [
+    data.explanation.base_value,
+    ...items.map((item) => item.shap_value),
+    data.explanation.prediction,
+  ];
+  await drawPlot(
+    'fuelModelChart',
+    [
+      {
+        type: 'waterfall',
+        orientation: 'h',
+        y: labels,
+        x: values,
+        measure: measures,
+        increasing: { marker: { color: '#b96e49' } },
+        decreasing: { marker: { color: '#557a91' } },
+        totals: { marker: { color: '#53616a' } },
+        connector: { line: { color: '#aab2b8', width: 1 } },
+        hovertemplate: '%{y}<br>貢獻／估計：%{x:.3f} ' +
+          `${esc(data.explanation.target_unit)}<extra></extra>`,
+      },
+    ],
+    {
+      margin: { l: 185, r: 28, t: 20, b: 55 },
+      xaxis: { title: `模型輸出與特徵貢獻（${data.explanation.target_unit}）` },
+      yaxis: { automargin: true },
+      height: 360,
+    },
+  );
+}
+async function loadFuelModel(id, tripRequest, modelRequest) {
+  try {
+    const response = await fetch(`/api/fuel-model?id=${id}`);
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      if (response.status === 404) {
+        throw Error('目前執行的伺服器版本尚未載入油耗模型 API，請重新啟動 FuelWise 後再試。');
+      }
+      throw Error(`模型 API 回傳非 JSON 回應 (${response.status})，請重新啟動 FuelWise 後再試。`);
+    }
+    const data = await response.json();
+    if (
+      modelRequest !== fuelModelRequestNumber ||
+      tripRequest !== requestNumber ||
+      Number($('journey').value) !== id
+    ) {
+      return;
+    }
+    if (!response.ok || !data.available) {
+      throw Error(data.reason || `模型估計讀取失敗 (${response.status})`);
+    }
+    activeFuelModel = { data, modelRequest };
+    await renderFuelModel(data, tripRequest, modelRequest);
+  } catch (e) {
+    if (
+      modelRequest === fuelModelRequestNumber &&
+      tripRequest === requestNumber &&
+      Number($('journey').value) === id
+    ) {
+      clearFuelModel(e.message || '模型估計暫時無法使用。', true);
+    }
+  }
+}
 function table(id, headers, rows) {
   $(id).innerHTML =
     `<table><thead><tr>${headers.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.join('') || '<tr><td>此範圍沒有資料</td></tr>'}</tbody></table>`;
@@ -292,6 +519,8 @@ function fillJourneys() {
 }
 async function loadSelected() {
   stopLiveMission();
+  const modelRequest = ++fuelModelRequestNumber;
+  clearFuelModel('等待選取行程模型估計…');
   liveAiRequestNumber++;
   liveAiSending = false;
   $('liveAiInput').disabled = false;
@@ -302,6 +531,7 @@ async function loadSelected() {
   const id = Number($('journey').value);
   if (!id) {
     ++requestNumber;
+    clearFuelModel('目前沒有可推論的行程。', true);
     stopPlay();
     current = null;
     tripId = null;
@@ -315,6 +545,9 @@ async function loadSelected() {
     return;
   }
   const serial = ++requestNumber;
+  tripId = id;
+  clearFuelModel('正在計算本趟行程油耗估計與特徵解釋…');
+  loadFuelModel(id, serial, modelRequest);
   $('loading').hidden = false;
   $('error').hidden = true;
   stopPlay();
