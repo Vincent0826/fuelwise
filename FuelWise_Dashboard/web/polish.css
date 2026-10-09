@@ -259,23 +259,6 @@ footer {
   background: transparent;
 }
 
-.fuel-model-panel .fuel-model-cards {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-  margin: 18px 0;
-}
-
-.fuel-model-panel .fuel-model-cards .card {
-  min-width: 0;
-  border: 1px solid #e1e6e8;
-  background: #fff;
-}
-
-.fuel-model-panel .fuel-model-cards .card strong {
-  font-size: clamp(18px, 1.5vw, 23px);
-  overflow-wrap: anywhere;
-}
-
 .fuel-model-chart-heading {
   margin-top: 22px;
 }
@@ -311,17 +294,7 @@ footer {
   overflow-wrap: anywhere;
 }
 
-@media (max-width: 900px) {
-  .fuel-model-panel .fuel-model-cards {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
 @media (max-width: 520px) {
-  .fuel-model-panel .fuel-model-cards {
-    grid-template-columns: 1fr;
-  }
-
   .fuel-model-meta {
     grid-template-columns: 1fr;
     gap: 4px;
@@ -449,11 +422,9 @@ nav button,
   border-radius: 2px;
 }
 
-#fleetCards {
+.overview-metric-cards {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 0;
-
   margin: 20px 0 28px;
   padding: 20px 0;
   border: 0;
@@ -461,7 +432,7 @@ nav button,
   background: transparent;
 }
 
-#fleetCards > .card {
+.overview-metric-cards > .card {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -484,25 +455,25 @@ nav button,
 }
 
 /* 淡分隔線，讓五組數據有清楚的邊界 */
-#fleetCards > .card + .card {
+.overview-metric-cards > .card + .card {
   border-left: 1px solid #e7edef;
 }
 
-#fleetCards > .card:first-child {
+.overview-metric-cards > .card:first-child {
   padding-left: 0;
 }
 
-#fleetCards > .card:last-child {
+.overview-metric-cards > .card:last-child {
   padding-right: 0;
 }
 
-#fleetCards > .card::before,
-#fleetCards > .card::after {
+.overview-metric-cards > .card::before,
+.overview-metric-cards > .card::after {
   display: none;
 }
 
 /* 第一個元素若是標題，統一其字級與顏色 */
-#fleetCards > .card > :first-child:not(strong) {
+.overview-metric-cards > .card > :first-child:not(strong) {
   margin: 0;
   color: #74818a;
   font-size: 13px;
@@ -512,7 +483,7 @@ nav button,
 }
 
 /* 數字：縮小尺寸，以適中的字重建立層次 */
-#fleetCards > .card strong {
+.overview-metric-cards > .card strong {
   display: block;
   margin: 12px 0 0;
 
@@ -525,7 +496,7 @@ nav button,
 }
 
 /* 單位保持低調 */
-#fleetCards > .card strong small {
+.overview-metric-cards > .card strong small {
   margin-left: 4px;
   color: #849198;
   font-size: 12px;
@@ -535,7 +506,7 @@ nav button,
 }
 
 /* 補充說明 */
-#fleetCards > .card > small {
+.overview-metric-cards > .card > small {
   margin-top: 8px;
   color: #8a959c;
   font-size: 11px;
@@ -548,14 +519,32 @@ nav button,
   color: #00897f;
 }
 
+#fleetCards {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+#fuelModelCards {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+#compareSummary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 /* 平板：三欄 */
 @media (max-width: 1100px) {
-  #fleetCards {
+  .overview-metric-cards {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     row-gap: 24px;
   }
 
-  #fleetCards > .card:nth-child(3n + 1) {
+  #fleetCards,
+  #fuelModelCards,
+  #compareSummary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .overview-metric-cards > .card:nth-child(3n + 1) {
     padding-left: 0;
     border-left: 0;
   }
@@ -563,29 +552,35 @@ nav button,
 
 /* 手機：兩欄 */
 @media (max-width: 700px) {
-  #fleetCards {
+  .overview-metric-cards {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     row-gap: 24px;
     padding: 16px 0;
   }
 
-  #fleetCards > .card {
+  #fleetCards,
+  #fuelModelCards,
+  #compareSummary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .overview-metric-cards > .card {
     padding: 0 16px;
   }
 
-  #fleetCards > .card:nth-child(n) {
+  .overview-metric-cards > .card:nth-child(n) {
     border-left: 0;
   }
 
-  #fleetCards > .card:nth-child(odd) {
+  .overview-metric-cards > .card:nth-child(odd) {
     padding-left: 0;
   }
 
-  #fleetCards > .card:nth-child(even) {
+  .overview-metric-cards > .card:nth-child(even) {
     border-left: 1px solid #e7edef;
   }
 
-  #fleetCards > .card strong {
+  .overview-metric-cards > .card strong {
     font-size: 28px;
   }
 }
@@ -986,4 +981,58 @@ main #download:hover {
   border-color: #cfd7da;
   background: #e7ebed;
   color: #263238;
+}
+
+.fuel-recommendations {
+  margin: 24px 0;
+  padding: 18px 0;
+  border-top: 1px solid #e7edef;
+  border-bottom: 1px solid #e7edef;
+}
+
+.fuel-recommendations h3 {
+  margin: 0 0 8px;
+}
+
+.fuel-recommendation-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.fuel-recommendation {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid #e1e6e8;
+  border-left: 3px solid #00897f;
+  background: #fff;
+}
+
+.fuel-recommendation-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.fuel-recommendation-heading h4 {
+  margin: 0;
+  color: #35414a;
+}
+
+.fuel-recommendation-heading strong {
+  flex: 0 0 auto;
+  color: #00897f;
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+.fuel-recommendation p {
+  margin: 10px 0 0;
+}
+
+.fuel-recommendation .fuel-recommendation-estimate {
+  color: #35414a;
+  font-weight: 600;
 }

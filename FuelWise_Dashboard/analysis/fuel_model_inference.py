@@ -9,10 +9,26 @@ import numpy as np
 import pandas as pd
 
 from analysis.train_fuel_model import FEATURE_COLUMNS, extract_features
+from analysis.trip_applicability import evaluate_applicability
 from analysis.vehicle_history_experiment import HISTORY_FEATURES
 
 BASE = Path(__file__).resolve().parent.parent
-BUNDLE_DIR = BASE / 'analysis_output' / 'experiments' / 'dashboard_model'
+EXPERIMENT_ROOT = BASE / 'analysis_output' / 'experiments'
+LEGACY_BUNDLE_DIR = EXPERIMENT_ROOT / 'dashboard_model'
+APPLICABLE_BUNDLE_DIR = EXPERIMENT_ROOT / 'dashboard_model_applicable'
+PACKAGED_BUNDLE_DIR = BASE / 'analysis' / 'model_bundle_applicable'
+BUNDLE_DIR = next(
+    (
+        bundle_dir
+        for bundle_dir in (
+            PACKAGED_BUNDLE_DIR,
+            APPLICABLE_BUNDLE_DIR,
+            LEGACY_BUNDLE_DIR,
+        )
+        if (bundle_dir / 'bundle.json').is_file()
+    ),
+    LEGACY_BUNDLE_DIR,
+)
 MODEL_FEATURES = FEATURE_COLUMNS + HISTORY_FEATURES
 FEATURE_LABELS = {
     'distance_km': ('行程距離', 'km'),
@@ -37,6 +53,28 @@ FEATURE_LABELS = {
     'vehicle_history_median_l_per_100km': ('訓練歷史油耗中位數', 'L/100 km'),
     'vehicle_history_count': ('同車訓練歷史趟數', '趟'),
     'vehicle_history_fallback': ('使用全體訓練中位數回退', '0／1'),
+}
+DRIVER_ACTIONS = {
+    'idle_engine_share_pct': (
+        '減少不必要怠速',
+        '停等時若安全、合法且符合車隊規範，減少不必要的引擎運轉；勿因此影響交通安全。',
+        'idle',
+    ),
+    'mean_abs_acceleration_m_s2': (
+        '平順起步與加速',
+        '提早觀察路況、平順起步，避免不必要的急加速。',
+        'smooth_driving',
+    ),
+    'speed_abs_change_mean_kmh': (
+        '減少頻繁加減速',
+        '保持安全車距並提早收油，減少不必要的頻繁加減速。',
+        'smooth_driving',
+    ),
+    'speed_std_kmh': (
+        '維持穩定車速',
+        '在路況與速限允許下平穩行駛；交通與路線也會影響車速變化。',
+        'smooth_driving',
+    ),
 }
 
 
@@ -208,6 +246,119 @@ def _predict_and_explain(model, values, feature_names, tree_count):
     return normalized, prediction, base_value, shap_values, additivity_error
 
 
+def _fuel_saving_scenarios(
+    model,
+    values,
+    shap_values,
+    feature_names,
+    tree_count,
+    current_prediction,
+    distance_km,
+    target,
+    bundle,
+):
+    """Estimate isolated model scenarios against the eligible training Q25."""
+    current_l100 = (
+        current_prediction / distance_km * 100
+        if target == 'fuel_l'
+        else current_prediction
+    )
+    if not math.isfinite(current_l100) or current_l100 <= 0:
+        return []
+
+    training = [
+        row['features']
+        for row in bundle['saved_features'].values()
+        if row.get('split') == 'train'
+    ]
+    candidates = []
+    for index, name in enumerate(feature_names):
+        action = DRIVER_ACTIONS.get(name)
+        current = _finite_number(values.get(name))
+        shap_value = _finite_number(shap_values[index])
+        if (
+            action is None
+            or current is None
+            or shap_value is None
+            or shap_value <= 0
+        ):
+            continue
+        reference = np.asarray(
+            [
+                value
+                for row in training
+                if (value := _finite_number(row.get(name))) is not None
+            ],
+            dtype=float,
+        )
+        if not len(reference):
+            continue
+        benchmark = float(np.quantile(reference, 0.25))
+        if not math.isfinite(benchmark) or current <= benchmark:
+            continue
+
+        scenario = dict(values)
+        scenario[name] = benchmark
+        _, counterfactual, _, _, _ = _predict_and_explain(
+            model,
+            scenario,
+            feature_names,
+            tree_count,
+        )
+        counterfactual_l100 = (
+            counterfactual / distance_km * 100
+            if target == 'fuel_l'
+            else counterfactual
+        )
+        saving_l100 = current_l100 - counterfactual_l100
+        if (
+            not math.isfinite(counterfactual_l100)
+            or counterfactual_l100 < 0
+            or saving_l100 <= 0
+        ):
+            continue
+        title, instruction, group = action
+        candidates.append(
+            {
+                'key': name,
+                'name': FEATURE_LABELS[name][0],
+                'title': title,
+                'instruction': instruction,
+                'group': group,
+                'unit': FEATURE_LABELS[name][1],
+                'current_value': current,
+                'benchmark_value': benchmark,
+                'benchmark_description': '合格訓練行程第 25 百分位',
+                'shap_contribution': shap_value,
+                'estimate_before_l_per_100km': current_l100,
+                'estimated_saving_pct': saving_l100 / current_l100 * 100,
+                'estimated_saving_l_per_100km': saving_l100,
+                'estimated_saving_l_for_trip': saving_l100 * distance_km / 100,
+                'estimate_after_l_per_100km': counterfactual_l100,
+            }
+        )
+
+    # Acceleration and speed-variation features overlap; report only the
+    # strongest modeled scenario for that shared driving behavior.
+    selected = {}
+    for candidate in candidates:
+        group = candidate['group']
+        previous = selected.get(group)
+        if previous is None or (
+            candidate['estimated_saving_pct'],
+            candidate['shap_contribution'],
+        ) > (
+            previous['estimated_saving_pct'],
+            previous['shap_contribution'],
+        ):
+            selected[group] = candidate
+    return sorted(
+        selected.values(),
+        key=lambda item: item['estimated_saving_pct'],
+        reverse=True,
+    )
+
+
 def _explanation_items(values, shap_values, feature_names):
     contributions = [
         {
@@ -238,6 +389,13 @@ def _explanation_items(values, shap_values, feature_names):
 
 
 def predict_trip(analysis, vehicle, journey):
+    applicability = evaluate_applicability(analysis)
+    if not applicability['model_eligible']:
+        return {
+            'available': True,
+            'eligible': False,
+            'applicability': applicability,
+        }
     bundle = load_bundle()
     summary = analysis.get('summary', {})
     distance = _finite_number(summary.get('distance_km'))
@@ -260,6 +418,17 @@ def predict_trip(analysis, vehicle, journey):
         )
     )
     target = metadata['model_target']
+    fuel_saving_scenarios = _fuel_saving_scenarios(
+        bundle['model'],
+        normalized,
+        shap_values,
+        metadata['feature_names'],
+        bundle['tree_count'],
+        raw_prediction,
+        distance,
+        target,
+        bundle,
+    )
     if target == 'fuel_l':
         estimated_fuel_l = raw_prediction
         estimated_l_per_100km = raw_prediction / distance * 100
@@ -309,7 +478,10 @@ def predict_trip(analysis, vehicle, journey):
     )
     return {
         'available': True,
+        'eligible': True,
+        'applicability': applicability,
         'model': {
+            'rule_version': metadata.get('rule_version'),
             'method': metadata['model_method'],
             'target': target,
             'role': metadata['model_role'],
@@ -354,6 +526,7 @@ def predict_trip(analysis, vehicle, journey):
                 metadata['feature_names'],
             ),
         },
+        'fuel_saving_scenarios': fuel_saving_scenarios,
         'missing_features': missing_features,
         'warnings': warnings,
         'limitations': limitations,
