@@ -237,6 +237,71 @@ class FuelModelTests(unittest.TestCase):
         self.assertAlmostEqual(before[1], after[1], places=7)
         np.testing.assert_allclose(before[3], after[3], rtol=0, atol=1e-7)
 
+    def test_fuel_saving_scenario_uses_shap_and_training_q25(self):
+        import xgboost as xgb
+
+        feature_name = 'mean_abs_acceleration_m_s2'
+        feature_names = [feature_name]
+        training_values = np.arange(8, dtype=float)
+        training = pd.DataFrame({feature_name: training_values})
+        matrix = xgb.DMatrix(
+            training,
+            label=training_values * 2 + 5,
+            feature_names=feature_names,
+        )
+        model = xgb.train(
+            {
+                'objective': 'reg:squarederror',
+                'max_depth': 1,
+                'eta': 0.5,
+                'seed': 31,
+                'nthread': 1,
+            },
+            matrix,
+            num_boost_round=4,
+        )
+        values = {feature_name: 7.0}
+        _, prediction, _, shap_values, _ = fuel_model_inference._predict_and_explain(
+            model,
+            values,
+            feature_names,
+            4,
+        )
+        bundle = {
+            'saved_features': {
+                (f'vehicle-{index}', f'trip-{index}'): {
+                    'split': 'train',
+                    'features': {feature_name: float(value)},
+                }
+                for index, value in enumerate(training_values)
+            }
+        }
+
+        scenarios = fuel_model_inference._fuel_saving_scenarios(
+            model,
+            values,
+            shap_values,
+            feature_names,
+            4,
+            prediction,
+            100.0,
+            'l_per_100km',
+            bundle,
+        )
+
+        self.assertEqual(len(scenarios), 1)
+        self.assertEqual(scenarios[0]['key'], feature_name)
+        self.assertAlmostEqual(
+            scenarios[0]['benchmark_value'],
+            np.quantile(training_values, 0.25),
+        )
+        self.assertGreater(scenarios[0]['shap_contribution'], 0)
+        self.assertGreater(scenarios[0]['estimated_saving_pct'], 0)
+        self.assertGreater(
+            scenarios[0]['estimated_saving_l_per_100km'],
+            0,
+        )
+
     def test_predict_trip_keeps_units_and_reports_shap_values(self):
         import xgboost as xgb
 
@@ -314,6 +379,9 @@ class FuelModelTests(unittest.TestCase):
         with patch(
             'analysis.fuel_model_inference.load_bundle',
             return_value=bundle,
+        ), patch(
+            'analysis.fuel_model_inference.evaluate_applicability',
+            return_value={'model_eligible': True, 'rule_version': 'test'},
         ):
             result = fuel_model_inference.predict_trip(
                 analysis,
@@ -332,6 +400,22 @@ class FuelModelTests(unittest.TestCase):
             places=5,
         )
 
+    def test_ineligible_trip_gets_no_estimate_or_shap(self):
+        with patch(
+            'analysis.fuel_model_inference.load_bundle',
+            side_effect=AssertionError('model must not load'),
+        ):
+            result = fuel_model_inference.predict_trip(
+                {'summary': {'distance_km': 1.0, 'duration_sec': 100}, 'points': []},
+                'A',
+                'short',
+            )
+        self.assertTrue(result['available'])
+        self.assertFalse(result['eligible'])
+        self.assertNotIn('explanation', result)
+        self.assertNotIn('estimate', result)
+        self.assertIn('short_distance', result['applicability']['labels'])
+
     def test_model_missing_and_invalid_distance_return_explicit_reasons(self):
         with tempfile.TemporaryDirectory() as directory:
             fuel_model_inference.load_bundle.cache_clear()
@@ -345,7 +429,11 @@ class FuelModelTests(unittest.TestCase):
                 ):
                     fuel_model_inference.load_bundle()
             fuel_model_inference.load_bundle.cache_clear()
+        eligible = {'model_eligible': True, 'rule_version': 'test'}
         with patch(
+            'analysis.fuel_model_inference.evaluate_applicability',
+            return_value=eligible,
+        ), patch(
             'analysis.fuel_model_inference.load_bundle',
             side_effect=fuel_model_inference.ModelUnavailableError(
                 '模型檔不存在'
@@ -361,6 +449,9 @@ class FuelModelTests(unittest.TestCase):
                     'trip',
                 )
         with patch(
+            'analysis.fuel_model_inference.evaluate_applicability',
+            return_value=eligible,
+        ), patch(
             'analysis.fuel_model_inference.load_bundle',
             return_value={},
         ):

@@ -242,8 +242,65 @@ function error(e) {
 function card(title, value, unit = '', note = '') {
   return `<div class="card"><span>${esc(title)}</span><strong>${value} <small>${esc(unit)}</small></strong><small>${esc(note)}</small></div>`;
 }
+function renderFuelRecommendations(scenarios) {
+  const recommendationMarkup = (includeSafetyDetails) =>
+    scenarios.length
+      ? `
+    <h3>AI 省油建議</h3>
+    ${
+      includeSafetyDetails
+        ? '<p class="muted">安全提醒：請以行車安全、合法規範及車隊規定為優先，勿為節油而影響交通安全。</p>'
+        : ''
+    }
+    <div class="fuel-recommendation-list">${scenarios
+      .map(
+        (scenario) => `
+        <article class="fuel-recommendation">
+          <div class="fuel-recommendation-heading">
+            <h4>${esc(scenario.title)}</h4>
+            <strong>約 ${fmt(scenario.estimated_saving_pct, 1)}%</strong>
+          </div>
+          ${
+            includeSafetyDetails
+              ? `<p>${esc(scenario.instruction)}</p>`
+              : ''
+          }
+          <p class="fuel-recommendation-estimate">
+            模型油耗估計由 ${fmt(
+              scenario.estimate_before_l_per_100km,
+              2,
+            )} 降至 ${fmt(
+              scenario.estimate_after_l_per_100km,
+              2,
+            )} L/100 km（約 ${fmt(
+              scenario.estimated_saving_pct,
+              1,
+            )}%）；以本趟里程估算約少 ${fmt(
+              scenario.estimated_saving_l_for_trip,
+              2,
+            )} L。
+          </p>
+        </article>`,
+      )
+      .join('')}</div>`
+      : '';
+  [
+    ['fuelModelRecommendations', true],
+    ['driverRecommendations', false],
+  ].forEach(([id, includeSafetyDetails]) => {
+    const recommendations = $(id);
+    if (!recommendations) return;
+    recommendations.hidden = !scenarios.length;
+    recommendations.innerHTML = recommendationMarkup(includeSafetyDetails);
+  });
+}
 function clearFuelModel(message, warning = false) {
   activeFuelModel = null;
+  renderFuelRecommendations([]);
+  if ($('applicabilityBox')) {
+    $('applicabilityBox').innerHTML = '';
+    $('applicabilityBox').hidden = true;
+  }
   $('fuelModelContent').hidden = true;
   $('fuelModelBadge').hidden = true;
   $('fuelModelCards').innerHTML = '';
@@ -346,24 +403,25 @@ async function renderFuelModel(data, tripRequest, modelRequest) {
 
   const model = data.model,
     comparison = model.validation_comparison_mae_l_per_100km || {},
-    baselineMae = comparison.vehicle_median_baseline,
-    selectedMae = model.validation_metrics.l_per_100km?.mae,
+    baselineMae = comparison.new_A ?? comparison.vehicle_median_baseline,
+    selectedMae = comparison.new_C ?? model.validation_metrics.l_per_100km?.mae,
     warnings = [...data.warnings];
+  const scopeNote = '針對符合一般運輸適用範圍的行程';
   if (selectedMae != null && baselineMae != null && selectedMae >= baselineMae) {
     warnings.unshift(
-      `目前機器學習模型尚未優於歷史基準：驗證 MAE ${fmt(selectedMae, 3)}，車輛中位數基準 ${fmt(baselineMae, 3)} L/100 km。`,
+      `${scopeNote}：模型驗證 MAE ${fmt(selectedMae, 3)}，尚未優於車輛歷史中位數基準 ${fmt(baselineMae, 3)} L/100 km。`,
     );
   } else {
     warnings.unshift(
-      `本次驗證集 MAE 為 ${fmt(selectedMae, 3)}，車輛中位數基準為 ${fmt(baselineMae, 3)} L/100 km；仍屬實驗展示。`,
+      `${scopeNote}：模型驗證 MAE ${fmt(selectedMae, 3)}，優於車輛歷史中位數基準 ${fmt(baselineMae, 3)} L/100 km。`,
     );
   }
   $('fuelModelWarning').hidden = false;
   $('fuelModelWarning').innerHTML = warnings.map(esc).join('<br>');
+  renderFuelRecommendations(data.fuel_saving_scenarios || []);
   $('fuelModelChartSummary').textContent =
     `模型解釋起點 ${fmt(data.explanation.base_value, 3)} ${data.explanation.target_unit}；` +
-    `最終估計 ${fmt(data.explanation.prediction, 3)} ${data.explanation.target_unit}。` +
-    '正貢獻推高模型估計，負貢獻降低模型估計。';
+    `最終估計 ${fmt(data.explanation.prediction, 3)} ${data.explanation.target_unit}。`;
   await renderFuelModelChart(data);
   if (
     modelRequest !== fuelModelRequestNumber ||
@@ -434,6 +492,41 @@ async function renderFuelModelChart(data) {
     },
   );
 }
+function applicabilityChips(a) {
+  if (!a) return '';
+  const chips = (a.labels || [])
+    .map((k) => {
+      const text = (a.label_texts || {})[k] || k;
+      const ok = k === 'eligible_transport';
+      return `<span class="badge ${ok ? 'ok' : 'warn'}">${esc(text)}</span>`;
+    })
+    .join(' ');
+  return `<p class="applicability-chips">${chips}</p>`;
+}
+function applicabilityDetail(a) {
+  if (!a) return '';
+  const min = (v) => (v == null ? '—' : fmt(v / 60, 1));
+  const cov = a.observation_coverage == null ? '—' : `${fmt(a.observation_coverage * 100, 1)}%`;
+  const ratio =
+    a.stationary_engine_on_ratio_observed == null
+      ? '—'
+      : `${fmt(a.stationary_engine_on_ratio_observed * 100, 1)}%`;
+  const reasons = (a.exclusion_reasons || [])
+    .map((r) => `<li>${esc((a.label_texts || {})[r] || r)}</li>`)
+    .join('');
+  const head = a.model_eligible
+    ? ''
+    : `<p><strong>此行程不適用一般運輸油耗模型</strong>（規則 ${esc(a.rule_version)}）；原始資料與地圖仍完整保留。</p><ul>${reasons}</ul>`;
+  return `${head}<p class="muted">可判讀時間 ${min(a.observable_duration_s)} 分／整趟 ${min(
+    a.trip_duration_s,
+  )} 分（涵蓋率 ${cov}），停車引擎運轉（可判讀區間內）${min(
+    a.stationary_engine_on_duration_s,
+  )} 分，占可判讀時間 ${ratio}。${
+    a.model_eligible
+      ? ''
+      : '短距離 L/100 km 受計數器刻度影響，不宜直接比較。'
+  }</p>`;
+}
 async function loadFuelModel(id, tripRequest, modelRequest) {
   try {
     const response = await fetch(`/api/fuel-model?id=${id}`);
@@ -452,11 +545,19 @@ async function loadFuelModel(id, tripRequest, modelRequest) {
     ) {
       return;
     }
+    if (response.ok && data.available && data.eligible === false) {
+      clearFuelModel('');
+      $('applicabilityBox').innerHTML = applicabilityDetail(data.applicability);
+      $('applicabilityBox').hidden = false;
+      return;
+    }
     if (!response.ok || !data.available) {
       throw Error(data.reason || `模型估計讀取失敗 (${response.status})`);
     }
     activeFuelModel = { data, modelRequest };
     await renderFuelModel(data, tripRequest, modelRequest);
+    $('applicabilityBox').innerHTML = applicabilityDetail(data.applicability);
+    $('applicabilityBox').hidden = false;
   } catch (e) {
     if (
       modelRequest === fuelModelRequestNumber &&
@@ -483,7 +584,7 @@ function setTab(name) {
   $('cards').hidden = name === 'live';
   document
     .querySelectorAll('.tab')
-    .forEach((e) => (e.hidden = e.id !== name || (name !== 'fleet' && !current)));
+    .forEach((e) => (e.hidden = e.id !== name || (name !== 'overview' && !current)));
   document
     .querySelectorAll('nav button')
     .forEach((e) => e.classList.toggle('active', e.dataset.tab === name));
@@ -568,12 +669,27 @@ async function loadSelected() {
       card('本趟耗油', fmt(s.fuel_l, 2), 'L') +
       card('百公里油耗', fmt(s.l100, 2), 'L/100km') +
       card('行程歷時', fmt(s.duration_sec / 60, 1), 'min') +
-      card('停車引擎運轉', fmt(s.idle_sec / 60, 1), 'min', `占可判讀時間 ${fmt(s.idle_pct)}%`);
+      card(
+        '停車引擎運轉',
+        fmt(s.idle_sec / 60, 1),
+        'min',
+        `占可判讀時間 ${fmt(s.idle_pct)}%`,
+      );
     $('insights').innerHTML =
-      data.notes.map((n) => `<p>${esc(n)}</p>`).join('') +
+      applicabilityChips(data.applicability) +
+      data.notes
+        .filter((note) => !note.includes('停車引擎運轉'))
+        .map((note) => `<p>${esc(note)}</p>`)
+        .join('') +
+      '<section id="driverRecommendations" class="fuel-recommendations" aria-labelledby="driverRecommendationsTitle" hidden></section>' +
       (s.quality_flags
         ? `<p class="badge">${s.quality_flags} 類品質問題，請查看資料品質頁。</p>`
         : '');
+    if (activeFuelModel?.modelRequest === modelRequest) {
+      renderFuelRecommendations(
+        activeFuelModel.data.fuel_saving_scenarios || [],
+      );
+    }
     $('cursor').max = Math.max(0, data.points.length - 1);
     $('cursor').value = 0;
     $('windowStart').value = 0;

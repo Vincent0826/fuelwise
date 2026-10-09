@@ -11,7 +11,7 @@
 
     <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script defer src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
-    <script defer src="/app.js?v=live-task-2"></script>
+    <script defer src="/app.js?v=applicability-v1-model-bundle"></script>
   </head>
 
   <body>
@@ -51,6 +51,7 @@
             <p class="eyebrow">工作區</p>
             <button data-tab="overview">車隊總覽</button>
             <button data-tab="trip" class="active">行程與地圖</button>
+            <button data-tab="fuel-model">AI 油耗估計與建議</button>
             <button data-tab="live">開始任務</button>
           </div>
           <div class="nav-group">
@@ -146,7 +147,7 @@
       <section id="overview" class="tab" hidden>
         <div class="panel">
           <h2>車隊營運概況</h2>
-          <div id="fleetCards" class="cards"></div>
+          <div id="fleetCards" class="cards overview-metric-cards"></div>
           <div id="fleetChart" class="chart"></div>
           <div class="toolbar">
             <input id="fleetSearch" placeholder="搜尋車牌／納管碼／行程">
@@ -162,37 +163,6 @@
       </section>
 
       <section id="trip" class="tab">
-        <div class="panel fuel-model-panel">
-          <div class="panelhead">
-            <div>
-              <p class="eyebrow">POST-TRIP MODEL ANALYSIS</p>
-              <h2>AI 油耗估計與解釋</h2>
-            </div>
-            <span id="fuelModelBadge" class="badge" hidden></span>
-          </div>
-          <p class="muted">根據已完成行程的資料估計油耗。</p>
-          <p class="muted">特徵貢獻解釋模型判斷，不代表因果或保證可節省的油量。</p>
-          <p id="fuelModelStatus" class="notice" role="status" aria-live="polite">
-            選取行程後載入模型估計。
-          </p>
-          <div id="fuelModelContent" hidden>
-            <div id="fuelModelCards" class="cards fuel-model-cards"></div>
-            <p id="fuelModelWarning" class="notice warn" hidden></p>
-            <div class="fuel-model-chart-heading">
-              <div>
-                <h3>本趟特徵貢獻</h3>
-                <p id="fuelModelChartSummary" class="muted"></p>
-              </div>
-            </div>
-            <div id="fuelModelChart" class="chart tall"></div>
-            <div id="fuelModelFeatureList" class="tablewrap"></div>
-            <details id="fuelModelDetails" class="fuel-model-details">
-              <summary>模型版本、評估成績與適用限制</summary>
-              <div id="fuelModelDetailsBody"></div>
-            </details>
-          </div>
-        </div>
-
         <div class="split">
           <div class="panel">
             <div class="panelhead">
@@ -222,7 +192,6 @@
             <p class="eyebrow">TRIP INSIGHTS</p>
             <h2>本趟觀察</h2>
             <div id="insights"></div>
-            <hr>
             <h3>游標所在觀測點</h3>
             <div id="pointInfo"></div>
           </div>
@@ -253,6 +222,39 @@
           <div id="timeline" class="chart tall"></div>
         </div>
 
+      </section>
+
+      <section id="fuel-model" class="tab" hidden>
+        <div class="panel fuel-model-panel">
+          <div class="panelhead">
+            <div>
+              <p class="eyebrow">POST-TRIP MODEL ANALYSIS</p>
+              <h2>AI 油耗估計與建議</h2>
+            </div>
+            <span id="fuelModelBadge" class="badge" hidden></span>
+          </div>
+          <p id="fuelModelStatus" class="notice" role="status" aria-live="polite">
+            選取行程後載入模型估計。
+          </p>
+          <div id="applicabilityBox" class="notice" hidden></div>
+          <div id="fuelModelContent" hidden>
+            <div id="fuelModelCards" class="cards overview-metric-cards"></div>
+            <p id="fuelModelWarning" class="notice warn" hidden></p>
+            <section id="fuelModelRecommendations" class="fuel-recommendations" aria-label="AI 省油建議" hidden></section>
+            <div class="fuel-model-chart-heading">
+              <div>
+                <h3>本趟特徵貢獻</h3>
+                <p id="fuelModelChartSummary" class="muted"></p>
+              </div>
+            </div>
+            <div id="fuelModelChart" class="chart tall"></div>
+            <div id="fuelModelFeatureList" class="tablewrap"></div>
+            <details id="fuelModelDetails" class="fuel-model-details">
+              <summary>模型版本、評估成績與適用限制</summary>
+              <div id="fuelModelDetailsBody"></div>
+            </details>
+          </div>
+        </div>
       </section>
 
       <section id="signals" class="tab" hidden>
@@ -316,9 +318,6 @@
           <div class="panelhead">
             <div>
               <h2>同車、相近起終點的歷史行程</h2>
-              <p class="muted">
-                描述性歷史比較；起點與終點分別依指定半徑篩選，不代表行駛相同路徑。
-              </p>
             </div>
             <select id="odRadius">
               <option value="200">OD半徑 200 m</option>
@@ -327,12 +326,9 @@
             </select>
           </div>
           <p id="peerNote"></p>
-          <div id="compareSummary" class="cards"></div>
+          <div id="compareSummary" class="cards overview-metric-cards"></div>
           <p id="compareStatus" class="notice" role="status" aria-live="polite"></p>
-          <p class="muted">
-            此比較僅依同車與相近起終點篩選，未確認相同路徑，亦未校正路況、坡度與載重；差異不直接代表駕駛表現或可節省油量。
-          </p>
-          <h3>停車引擎運轉時間與每百公里耗油（描述性）</h3>
+          <h3>停車引擎運轉時間與每百公里耗油</h3>
           <div id="compareChart" class="chart"></div>
           <div id="peerTable" class="tablewrap"></div>
         </div>

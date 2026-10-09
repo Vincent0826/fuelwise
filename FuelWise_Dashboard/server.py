@@ -12,6 +12,7 @@ from analysis.fuel_model_inference import (
     predict_trip,
 )
 from analysis.prepare_dashboard_model import prepare_dashboard_model
+from analysis.trip_applicability import evaluate_applicability
 BASE=Path(__file__).resolve().parent
 AI_SENSOR_FIELDS=('speed','rpm','load','temp','battery','fuel_level','distance','used')
 DEFAULT_GEMINI_MODEL='gemini-3.8-flash'
@@ -183,7 +184,7 @@ def main():
             try:
                 if url.path=='/api/catalog':data={'meta':meta,'trips':trips}
                 elif url.path=='/api/trip':
-                    data=trip(int(q['id'][0]));data={k:v for k,v in data.items() if k!='raw'}
+                    data=trip(int(q['id'][0]));data={**{k:v for k,v in data.items() if k!='raw'},'applicability':evaluate_applicability(data)}
                 elif url.path=='/api/fuel-model':
                     selected=trip(int(q['id'][0]))
                     try:data=predict_trip(selected,selected['vehicle'],selected['journey'])
