@@ -259,17 +259,6 @@ SHAP 說明的是**模型輸出如何由其輸入特徵構成**，不是特徵�
 
 重現實驗：`.\.venv\Scripts\python.exe -W ignore -m analysis.applicability_experiment`，輸出到 `analysis_output/experiments/applicability_applicability-v1_<時間>/`（含 `evaluation.json` 與 `dashboard_bundle/`）。把 `dashboard_bundle/` 複製為 `analysis_output/experiments/dashboard_model_applicable/` 後，推論會優先使用它；舊的 `dashboard_model/` 保留為備援。測試集已多次參與開發，結果僅稱為追蹤評估。
 
-### 多人協作建議
-
-- **先對齊資料與程式版本**：每位合作夥伴使用相同、經授權的來源活頁簿、相同 Git commit／分支及 Python 依賴版本。可先跑 `python -m unittest discover -s tests -p "test_*.py"`，再執行上述訓練命令。
-- **一次只比較一個明確改動**：例如提出一組新特徵、改一個特徵定義，或提出新的模型參數。記下假設、修改檔案、預期改善指標和可能副作用；不要在同一輪同時更換標籤、特徵、切分及模型參數。
-- **保留時間測試集的獨立性**：要改特徵或調參時依 train／validation 決定；test 結果用來做最終比較，反覆根據 test 調整會使測試集不再是獨立評估。若已用 test 指導改動，應在合作紀錄註明，並規劃新的未來時間保留集再確認。
-- **用產物而不只看單一分數**：比較每次的 `report.md`、`evaluation.json`、`metadata.json`、樣本數與排除原因。模型 MAE 必須同時對照中位數基準；也要檢查 RMSE、各車輛表現、負預測及資料涵蓋率，避免平均分數掩蓋局部退步或品質問題。
-- **用小樣本測試守住行為**：新增／修改特徵或切分規則時，同步更新 `tests/test_fuel_model.py`，涵蓋單位、缺值、邊界與目標洩漏；通過測試後才用完整資料執行訓練。
-- **妥善分享結果**：`analysis_output/` 和來源資料不納入版本控制。各協作者使用自己的授權 Excel，模型會在其電腦上本機建立。輸出含逐趟目標／預測、車輛識別碼、行程碼、來源路徑等資訊；分享前先依團隊資料權限去識別化，只共享合作所需的報告、設定及版本資訊。不可把原始 Excel、SQLite 索引或含識別碼的 CSV 貼到公開 issue、聊天室或未核准雲端。
-
-時間切分評估衡量的是**已觀測車隊在較晚時間行程上的預測表現**，不代表對新車輛、新路線或其他車隊泛化。行程油耗預測誤差不是駕駛浪費、可節省油量或因果改善效果；目前資料也沒有完整載重、坡度、交通、天候等控制變數。
-
 ## 參考
 
 - Leaflet: https://leafletjs.com/reference.html
