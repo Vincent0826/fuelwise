@@ -93,6 +93,10 @@
           <div class="live-actions">
             <button id="liveBack" class="secondary">← 返回上一模式</button>
             <span id="liveStatus" class="live-status">尚未開始</span>
+            <label class="live-voice-toggle" for="liveVoiceToggle">
+              <input id="liveVoiceToggle" type="checkbox" checked>
+              語音播報（省油提醒與 AI 回覆） <span id="liveVoiceStatus" class="live-voice-status"></span>
+            </label>
             <button id="liveToggle">▶ 開始任務</button>
             <button id="liveStop" class="secondary" disabled>結束任務</button>
           </div>
@@ -109,19 +113,9 @@
             <div class="live-progress-track" aria-hidden="true">
               <div id="liveProgressBar"></div>
             </div>
+            <p id="liveEventAlert" class="notice live-event-alert" aria-live="off" hidden></p>
           </div>
           <div class="panel live-sensors-panel">
-            <div class="panelhead">
-              <div>
-                <h2>目前感測器資料</h2>
-                <p id="liveTimestamp" class="muted">尚無觀測資料</p>
-              </div>
-              <span class="sensor-pulse" aria-hidden="true"></span>
-            </div>
-            <p id="liveEcoAlert" class="notice live-eco-alert" role="status" aria-live="polite" hidden></p>
-            <div id="liveSensors" class="live-sensors">
-              <p class="muted">按「開始任務」後，感測器資料將逐筆更新。</p>
-            </div>
             <div class="live-ai">
               <div class="live-ai-heading">
                 <h3>AI 行程助理</h3>
@@ -132,10 +126,21 @@
               </div>
               <form id="liveAiForm" class="live-ai-form">
                 <label class="visually-hidden" for="liveAiInput">詢問 AI 行程助理</label>
-                <textarea id="liveAiInput" rows="2" maxlength="1000" placeholder="例如：這趟行程有加速太快嗎？" required></textarea>
+                <textarea id="liveAiInput" rows="2" maxlength="1000" placeholder="例如：這趟行程的油耗表現如何？" required></textarea>
                 <button id="liveAiSend" type="submit">送出</button>
               </form>
               <p class="live-ai-privacy muted">匿名化感測器讀值、全程加減速送往 Gemini，不含車牌、車輛代碼、行程代碼。</p>
+            </div>
+            <div class="panelhead">
+              <div>
+                <h2>目前感測器資料</h2>
+                <p id="liveTimestamp" class="muted">尚無觀測資料</p>
+              </div>
+              <span class="sensor-pulse" aria-hidden="true"></span>
+            </div>
+            <p id="liveEcoAlert" class="notice live-eco-alert" role="status" aria-live="polite" hidden></p>
+            <div id="liveSensors" class="live-sensors">
+              <p class="muted">按「開始任務」後，感測器資料將逐筆更新。</p>
             </div>
           </div>
         </div>

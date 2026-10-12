@@ -42,8 +42,29 @@ let liveMap,
   liveAccelerationDirection = 0,
   liveAccelerationStreak = 0,
   liveEcoAlertDirection = 0,
-  liveEcoAlertRemaining = 0;
+  liveEcoAlertRemaining = 0,
+  liveVoiceDirection = 0,
+  liveVoiceSpokenAt = 0,
+  liveEventAlertTimer = null,
+  liveEventReminders = new Map();
 const LIVE_ACCELERATION_THRESHOLD = 3;
+const LIVE_VOICE_REPEAT_COOLDOWN_MS = 10000;
+const LIVE_EVENT_ALERT_DURATION_MS = 8000;
+const LIVE_EVENT_REMINDER_MESSAGES = {
+  怠速: '怠速提醒：停車等候時，若安全且允許，請關閉引擎。',
+  超速: '安全提醒：偵測到超速，請減速並遵守速限。',
+  DTC故障碼: '車輛偵測到故障碼，請於安全時檢查車輛。',
+  引擎過熱: '安全提醒：引擎溫度過高，請安全靠邊停車並檢查。',
+  引擎過載: '安全提醒：引擎負載過高，請平順駕駛並留意車況。',
+  疲勞駕駛: '安全提醒：請勿疲勞駕駛，請找安全地點休息。',
+  未繫安全帶: '安全提醒：請繫妥安全帶再行駛。',
+  使用通訊: '安全提醒：請勿在駕駛時使用通訊設備，專心駕駛。',
+  抽菸: '安全提醒：請勿在駕駛時分心抽菸。',
+  分心: '安全提醒：請勿分心，專心駕駛。',
+  鏡頭遮蔽: '安全提醒：請確認行車鏡頭未被遮蔽。',
+  駕駛消失: '安全提醒：請確認駕駛狀態並保持專注。',
+  車道偏離: '安全提醒：請注意車道，保持安全行駛。',
+};
 const MIN_COMPARE_REFERENCE_TRIPS = 5;
 const LIVE_AI_SENSOR_FIELDS = [
   'speed',
@@ -215,6 +236,7 @@ async function submitLiveAiQuestion(event) {
     if (!response.ok) throw Error(result.error || `AI 請求失敗 (${response.status})`);
     if (requestNumber !== liveAiRequestNumber) return;
     pending.textContent = result.answer;
+    if ($('liveVoiceToggle').checked) speakLiveText(result.answer);
     liveAiHistory.push(
       { role: 'user', content: question },
       { role: 'assistant', content: result.answer },
@@ -242,22 +264,80 @@ function error(e) {
 function card(title, value, unit = '', note = '') {
   return `<div class="card"><span>${esc(title)}</span><strong>${value} <small>${esc(unit)}</small></strong><small>${esc(note)}</small></div>`;
 }
-function renderFuelRecommendations(scenarios) {
+function renderFuelRecommendations(scenarios, vehicleAdvice = null) {
+  const adviceMarkup = (advice) => {
+    if (!advice) return '';
+    if (advice.status === 'baseline_unavailable') {
+      return `
+        <article class="vehicle-fuel-advice">
+          <div class="fuel-recommendation-heading">
+            <h4>同車油耗趨勢</h4>
+            <strong>基準不足</strong>
+          </div>
+          <p>目前沒有足夠的同車訓練歷史可作比較，因此不判定車輛油耗是否偏高。</p>
+        </article>`;
+    }
+    const difference =
+      advice.current_difference_pct == null
+        ? '—'
+        : `${advice.current_difference_pct >= 0 ? '+' : ''}${fmt(
+            advice.current_difference_pct,
+            1,
+          )}%`;
+    return `
+      <article class="vehicle-fuel-advice${advice.inspection_recommended ? ' warn' : ''}">
+        <div class="fuel-recommendation-heading">
+          <h4>${
+            advice.inspection_recommended
+              ? '近期油耗持續偏高'
+              : '同車油耗趨勢'
+          }</h4>
+          <strong>${advice.inspection_recommended ? '建議檢查' : '趨勢參考'}</strong>
+        </div>
+        <p>本趟實際油耗 ${fmt(
+          advice.current_l_per_100km,
+          2,
+        )} L/100 km；同車歷史中位數 ${fmt(
+          advice.baseline_l_per_100km,
+          2,
+        )} L/100 km（${fmt(advice.baseline_trip_count, 0)} 趟歷史基準），本趟差異 ${difference}。</p>
+        <p>最近 ${fmt(advice.recent_trip_count, 0)}/${fmt(
+          advice.window_size,
+          0,
+        )} 趟中，有 ${fmt(
+          advice.trips_over_threshold,
+          0,
+        )} 趟高於基準 ${fmt(advice.threshold_pct, 0)}% 以上。</p>
+        ${
+          advice.recent_trip_count < advice.window_size
+            ? '<p>目前可比較的近期行程不足 5 趟，暫不觸發持續偏高提醒。</p>'
+            : ''
+        }
+        ${
+          advice.inspection_recommended
+            ? '<p>可安排檢查胎壓、保養週期及故障碼；此趨勢提醒不是車輛故障診斷。</p>'
+            : ''
+        }
+      </article>`;
+  };
   const recommendationMarkup = (includeSafetyDetails) =>
-    scenarios.length
+    scenarios.length || vehicleAdvice
       ? `
-    <h3>AI 省油建議</h3>
+    <h3>油耗趨勢與省油建議</h3>
+    ${adviceMarkup(vehicleAdvice)}
     ${
-      includeSafetyDetails
-        ? '<p class="muted">安全提醒：請以行車安全、合法規範及車隊規定為優先，勿為節油而影響交通安全。</p>'
+      includeSafetyDetails && scenarios.length
+        ? '<p class="muted">安全提醒：以行車安全、法規及車隊規定為優先，勿為節油而影響交通安全。</p>'
         : ''
     }
-    <div class="fuel-recommendation-list">${scenarios
-      .map(
-        (scenario) => `
+    ${
+      scenarios.length
+        ? `<div class="fuel-recommendation-list">${scenarios
+            .map(
+              (scenario) => `
         <article class="fuel-recommendation">
           <div class="fuel-recommendation-heading">
-            <h4>${esc(scenario.title)}</h4>
+            <h2>${esc(scenario.title)}</h2>
             <strong>約 ${fmt(scenario.estimated_saving_pct, 1)}%</strong>
           </div>
           ${
@@ -275,14 +355,16 @@ function renderFuelRecommendations(scenarios) {
             )} L/100 km（約 ${fmt(
               scenario.estimated_saving_pct,
               1,
-            )}%）；以本趟里程估算約少 ${fmt(
+            )}%）；本趟估算約少 ${fmt(
               scenario.estimated_saving_l_for_trip,
               2,
             )} L。
           </p>
         </article>`,
-      )
-      .join('')}</div>`
+            )
+            .join('')}</div>`
+        : ''
+    }`
       : '';
   [
     ['fuelModelRecommendations', true],
@@ -290,7 +372,7 @@ function renderFuelRecommendations(scenarios) {
   ].forEach(([id, includeSafetyDetails]) => {
     const recommendations = $(id);
     if (!recommendations) return;
-    recommendations.hidden = !scenarios.length;
+    recommendations.hidden = !scenarios.length && !vehicleAdvice;
     recommendations.innerHTML = recommendationMarkup(includeSafetyDetails);
   });
 }
@@ -418,7 +500,10 @@ async function renderFuelModel(data, tripRequest, modelRequest) {
   }
   $('fuelModelWarning').hidden = false;
   $('fuelModelWarning').innerHTML = warnings.map(esc).join('<br>');
-  renderFuelRecommendations(data.fuel_saving_scenarios || []);
+  renderFuelRecommendations(
+    data.fuel_saving_scenarios || [],
+    data.vehicle_fuel_advice || null,
+  );
   $('fuelModelChartSummary').textContent =
     `模型解釋起點 ${fmt(data.explanation.base_value, 3)} ${data.explanation.target_unit}；` +
     `最終估計 ${fmt(data.explanation.prediction, 3)} ${data.explanation.target_unit}。`;
@@ -628,7 +713,7 @@ async function loadSelected() {
   $('liveAiSend').disabled = false;
   liveAiHistory = [];
   $('liveAiMessages').innerHTML =
-    '<p class="live-ai-message assistant">你好！我可以根據目前行程的感測器資料，協助分析急加速、急煞車與行駛狀況。</p>';
+    '<p class="live-ai-message assistant">你好！我可以根據目前行程的感測器資料，協助分析行駛狀況。</p>';
   const id = Number($('journey').value);
   if (!id) {
     ++requestNumber;
@@ -688,6 +773,7 @@ async function loadSelected() {
     if (activeFuelModel?.modelRequest === modelRequest) {
       renderFuelRecommendations(
         activeFuelModel.data.fuel_saving_scenarios || [],
+        activeFuelModel.data.vehicle_fuel_advice || null,
       );
     }
     $('cursor').max = Math.max(0, data.points.length - 1);
@@ -817,8 +903,90 @@ function resetLiveEcoAlert() {
   liveAccelerationStreak = 0;
   liveEcoAlertDirection = 0;
   liveEcoAlertRemaining = 0;
+  liveVoiceDirection = 0;
+  liveVoiceSpokenAt = 0;
   $('liveEcoAlert').hidden = true;
   $('liveEcoAlert').textContent = '';
+  clearLiveEventAlert();
+}
+function clearLiveEventAlert() {
+  if (liveEventAlertTimer) clearTimeout(liveEventAlertTimer);
+  liveEventAlertTimer = null;
+  const alert = $('liveEventAlert');
+  alert.hidden = true;
+  alert.textContent = '';
+}
+function cancelLiveSpeech() {
+  if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+}
+function speakLiveText(message) {
+  if (
+    !('speechSynthesis' in window) ||
+    typeof SpeechSynthesisUtterance !== 'function'
+  ) {
+    return;
+  }
+  const utterance = new SpeechSynthesisUtterance(message);
+  utterance.lang = 'zh-TW';
+  window.speechSynthesis.speak(utterance);
+}
+function speakLiveEcoAlert(message, direction) {
+  if (
+    !$('liveVoiceToggle').checked ||
+    !('speechSynthesis' in window) ||
+    typeof SpeechSynthesisUtterance !== 'function'
+  ) {
+    return;
+  }
+  const now = Date.now();
+  if (
+    direction === liveVoiceDirection &&
+    now - liveVoiceSpokenAt < LIVE_VOICE_REPEAT_COOLDOWN_MS
+  ) {
+    return;
+  }
+  liveVoiceDirection = direction;
+  liveVoiceSpokenAt = now;
+  cancelLiveSpeech();
+  speakLiveText(message);
+}
+function buildLiveEventReminders() {
+  const reminders = new Map();
+  const add = (index, message) => {
+    if (index == null || String(index).trim() === '') return;
+    const pointIndex = Number(index);
+    if (
+      !Number.isInteger(pointIndex) ||
+      pointIndex < 0 ||
+      pointIndex >= current.points.length
+    ) {
+      return;
+    }
+    const messages = reminders.get(pointIndex) || [];
+    if (!messages.includes(message)) messages.push(message);
+    reminders.set(pointIndex, messages);
+  };
+  for (const event of current.events || []) {
+    const type = String(event.type || '').trim();
+    const message = Object.hasOwn(LIVE_EVENT_REMINDER_MESSAGES, type)
+      ? LIVE_EVENT_REMINDER_MESSAGES[type]
+      : null;
+    if (message) add(event.index, message);
+  }
+  for (const stop of current.stops || []) {
+    add(stop.index, LIVE_EVENT_REMINDER_MESSAGES.怠速);
+  }
+  return reminders;
+}
+function displayLiveEventReminders(index) {
+  const messages = liveEventReminders.get(index);
+  if (!messages) return;
+  liveEventReminders.delete(index);
+  const alert = $('liveEventAlert');
+  alert.textContent = messages.join(' ');
+  alert.hidden = false;
+  if (liveEventAlertTimer) clearTimeout(liveEventAlertTimer);
+  liveEventAlertTimer = setTimeout(clearLiveEventAlert, LIVE_EVENT_ALERT_DURATION_MS);
 }
 function updateLiveEcoAlert(point, previous) {
   const alert = $('liveEcoAlert');
@@ -870,11 +1038,13 @@ function updateLiveEcoAlert(point, previous) {
   alert.hidden = false;
   liveEcoAlertDirection = direction;
   liveEcoAlertRemaining = 6;
+  speakLiveEcoAlert(alert.textContent, direction);
 }
 function renderLivePoint(index) {
   const p = current.points[index],
     previous = index > 0 ? current.points[index - 1] : null;
   updateLiveEcoAlert(p, previous);
+  displayLiveEventReminders(index);
   const values = [
     ['車速', p.speed, 'km/h', 1, 'speed'],
     ['引擎轉速', p.rpm, 'rpm', 0, 'rpm'],
@@ -910,7 +1080,7 @@ function renderLivePoint(index) {
           percentChange == null
             ? '—'
             : `<span class="live-change-arrow" aria-hidden="true">${arrow}</span> ${fmt(Math.abs(percentChange), 1)}%`;
-        return `<div class="live-sensor"><span>${esc(label)}</span><strong>${fmt(value, decimals)} <small>${esc(unit)}</small></strong><div class="live-sensor-change"><small class="live-change-value ${trendClass}">${rate}</small></div></div>`;
+        return `<div class="live-sensor"><span>${esc(label)}</span><div class="live-sensor-reading"><strong>${fmt(value, decimals)} <small>${esc(unit)}</small></strong><div class="live-sensor-change"><small class="live-change-value ${trendClass}">${rate}</small></div></div></div>`;
       },
     )
     .join('');
@@ -939,8 +1109,9 @@ function renderLivePoint(index) {
   }
   liveMap.panTo([p.lat, p.lon], { animate: false });
 }
-function setLiveRunning(running, status) {
+function setLiveRunning(running, status, cancelSpeech = true) {
   liveRunning = running;
+  if (!running && cancelSpeech) cancelLiveSpeech();
   $('liveStatus').textContent = status;
   $('liveStatus').classList.toggle('running', running);
   $('liveToggle').textContent = running
@@ -968,12 +1139,14 @@ function startLiveMission() {
   $('error').hidden = true;
   try {
     resetLiveEcoAlert();
+    clearLiveEventAlert();
     if (!ensureLiveMap()) {
       $('liveStatus').textContent = '地圖無法啟動';
       return;
     }
     liveActive = true;
     liveIndex = 0;
+    liveEventReminders = buildLiveEventReminders();
     $('liveTrip').textContent = `${current.vehicle} · ${current.journey}`;
     renderLivePoint(liveIndex);
     setLiveRunning(true, '模擬重播中');
@@ -989,7 +1162,8 @@ function advanceLiveMission() {
     clearInterval(liveTimer);
     liveTimer = null;
     liveActive = false;
-    setLiveRunning(false, '重播完成');
+    liveEventReminders.clear();
+    setLiveRunning(false, '重播完成', false);
     return;
   }
   liveIndex++;
@@ -999,6 +1173,7 @@ function stopLiveMission() {
   if (liveTimer) clearInterval(liveTimer);
   liveTimer = null;
   resetLiveEcoAlert();
+  liveEventReminders.clear();
   if (!liveActive && !liveRunning) return;
   liveActive = false;
   setLiveRunning(false, '任務已結束');
@@ -1677,6 +1852,17 @@ document.querySelectorAll('nav button').forEach((b) => {
     if (b.dataset.tab === 'live') startLiveMission();
   };
 });
+$('liveVoiceToggle').addEventListener('change', (event) => {
+  if (!event.currentTarget.checked) cancelLiveSpeech();
+});
+if (
+  !('speechSynthesis' in window) ||
+  typeof SpeechSynthesisUtterance !== 'function'
+) {
+  $('liveVoiceToggle').checked = false;
+  $('liveVoiceToggle').disabled = true;
+  $('liveVoiceStatus').textContent = '（此瀏覽器不支援語音）';
+}
 $('liveBack').onclick = () => setTab(liveReturnTab);
 $('liveToggle').onclick = () => {
   if (liveRunning) {

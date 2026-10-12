@@ -359,6 +359,110 @@ def _fuel_saving_scenarios(
     )
 
 
+def _vehicle_fuel_advice(
+    vehicle,
+    journey,
+    current_start,
+    current_l100,
+    baseline_l100,
+    baseline_trip_count,
+    vehicle_trips,
+    eligible_trip_keys,
+):
+    """Compare recent eligible trips with the vehicle's training-history median."""
+    baseline = _finite_number(baseline_l100)
+    history_count = _finite_number(baseline_trip_count)
+    threshold_pct = 15.0
+    window_size = 5
+    current_key = (str(vehicle), str(journey))
+    if baseline is None or baseline <= 0 or not history_count:
+        return {
+            'status': 'baseline_unavailable',
+            'baseline_l_per_100km': baseline,
+            'baseline_trip_count': int(history_count or 0),
+            'window_size': window_size,
+            'threshold_pct': threshold_pct,
+            'recent_trip_count': 0,
+            'trips_over_threshold': 0,
+            'inspection_recommended': False,
+            'current_l_per_100km': _finite_number(current_l100),
+            'current_difference_pct': None,
+        }
+
+    selected_start = str(current_start or '')
+    candidates = []
+    found_current = False
+    for trip in vehicle_trips:
+        key = (str(trip.get('vehicle')), str(trip.get('journey')))
+        is_current = key == current_key
+        if str(trip.get('vehicle')) != str(vehicle):
+            continue
+        if not is_current and key not in eligible_trip_keys:
+            continue
+        start = str(trip.get('start') or '')
+        end = str(trip.get('end') or start)
+        if not is_current and (not selected_start or end > selected_start):
+            continue
+        l100 = (
+            _finite_number(current_l100)
+            if is_current
+            else _finite_number(trip.get('l100'))
+        )
+        if l100 is None or l100 < 0:
+            continue
+        candidates.append(
+            {
+                'journey': key[1],
+                'start': start,
+                'l_per_100km': l100,
+            }
+        )
+        found_current = found_current or is_current
+
+    if not found_current:
+        current_value = _finite_number(current_l100)
+        if current_value is not None and current_value >= 0:
+            candidates.append(
+                {
+                    'journey': current_key[1],
+                    'start': selected_start,
+                    'l_per_100km': current_value,
+                }
+            )
+    candidates.sort(key=lambda item: (item['start'], item['journey']))
+    recent = candidates[-window_size:]
+    over_threshold = sum(
+        item['l_per_100km'] > baseline * (1 + threshold_pct / 100)
+        for item in recent
+    )
+    inspection_recommended = (
+        len(recent) == window_size and over_threshold >= 3
+    )
+    current_value = _finite_number(current_l100)
+    return {
+        'status': (
+            'inspection_recommended'
+            if inspection_recommended
+            else 'insufficient_recent_trips'
+            if len(recent) < window_size
+            else 'no_alert'
+        ),
+        'baseline_l_per_100km': baseline,
+        'baseline_trip_count': int(history_count),
+        'window_size': window_size,
+        'threshold_pct': threshold_pct,
+        'recent_trip_count': len(recent),
+        'trips_over_threshold': over_threshold,
+        'inspection_recommended': inspection_recommended,
+        'current_l_per_100km': current_value,
+        'current_difference_pct': (
+            (current_value / baseline - 1) * 100
+            if current_value is not None and current_value > 0
+            else None
+        ),
+    }
+
+
 def _explanation_items(values, shap_values, feature_names):
     contributions = [
         {
@@ -388,7 +492,7 @@ def _explanation_items(values, shap_values, feature_names):
     return visible
 
 
-def predict_trip(analysis, vehicle, journey):
+def predict_trip(analysis, vehicle, journey, vehicle_trips=()):
     applicability = evaluate_applicability(analysis)
     if not applicability['model_eligible']:
         return {
@@ -452,6 +556,16 @@ def predict_trip(analysis, vehicle, journey):
                 HISTORY_FEATURES[0]
             ]
         )
+    )
+    vehicle_fuel_advice = _vehicle_fuel_advice(
+        vehicle=vehicle,
+        journey=journey,
+        current_start=summary.get('start'),
+        current_l100=_finite_number(summary.get('l100')),
+        baseline_l100=history_baseline_l100,
+        baseline_trip_count=values.get(HISTORY_FEATURES[1]),
+        vehicle_trips=vehicle_trips,
+        eligible_trip_keys=set(bundle['saved_features']),
     )
     actual_fuel_l = _finite_number(summary.get('fuel_l'))
     actual_l_per_100km = _finite_number(summary.get('l100'))
@@ -527,6 +641,7 @@ def predict_trip(analysis, vehicle, journey):
             ),
         },
         'fuel_saving_scenarios': fuel_saving_scenarios,
+        'vehicle_fuel_advice': vehicle_fuel_advice,
         'missing_features': missing_features,
         'warnings': warnings,
         'limitations': limitations,
