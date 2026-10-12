@@ -302,6 +302,84 @@ class FuelModelTests(unittest.TestCase):
             0,
         )
 
+    def test_vehicle_fuel_advice_flags_three_of_five_high_trips(self):
+        trips = [
+            {
+                'vehicle': 'vehicle-1',
+                'journey': f'trip-{index}',
+                'start': f'2025-01-01 {index + 8:02}:00',
+                'end': f'2025-01-01 {index + 8:02}:30:00',
+                'l100': value,
+            }
+            for index, value in enumerate([12.0, 12.0, 12.0, 10.0, 10.0])
+        ]
+        eligible = {
+            ('vehicle-1', f'trip-{index}') for index in range(5)
+        }
+
+        advice = fuel_model_inference._vehicle_fuel_advice(
+            vehicle='vehicle-1',
+            journey='trip-4',
+            current_start='2025-01-01 12:00',
+            current_l100=10.0,
+            baseline_l100=10.0,
+            baseline_trip_count=20,
+            vehicle_trips=trips,
+            eligible_trip_keys=eligible,
+        )
+
+        self.assertTrue(advice['inspection_recommended'])
+        self.assertEqual(advice['trips_over_threshold'], 3)
+        self.assertEqual(advice['recent_trip_count'], 5)
+        self.assertEqual(advice['current_difference_pct'], 0.0)
+
+    def test_vehicle_fuel_advice_ignores_ineligible_trips_and_future_trips(self):
+        trips = [
+            {
+                'vehicle': 'vehicle-1',
+                'journey': f'trip-{index}',
+                'start': f'2025-01-01 {index + 8:02}:00',
+                'end': f'2025-01-01 {index + 8:02}:30:00',
+                'l100': 12.0,
+            }
+            for index in range(6)
+        ]
+        eligible = {
+            ('vehicle-1', f'trip-{index}') for index in (0, 2, 4, 5)
+        }
+
+        advice = fuel_model_inference._vehicle_fuel_advice(
+            vehicle='vehicle-1',
+            journey='trip-4',
+            current_start='2025-01-01 12:00',
+            current_l100=12.0,
+            baseline_l100=10.0,
+            baseline_trip_count=20,
+            vehicle_trips=trips,
+            eligible_trip_keys=eligible,
+        )
+
+        self.assertFalse(advice['inspection_recommended'])
+        self.assertEqual(advice['recent_trip_count'], 3)
+        self.assertEqual(advice['trips_over_threshold'], 3)
+        self.assertEqual(advice['status'], 'insufficient_recent_trips')
+
+    def test_vehicle_fuel_advice_does_not_compare_fleet_fallback_baseline(self):
+        advice = fuel_model_inference._vehicle_fuel_advice(
+            vehicle='vehicle-1',
+            journey='trip-1',
+            current_start='2025-01-01 12:00',
+            current_l100=20.0,
+            baseline_l100=15.0,
+            baseline_trip_count=0,
+            vehicle_trips=[],
+            eligible_trip_keys=set(),
+        )
+
+        self.assertFalse(advice['inspection_recommended'])
+        self.assertEqual(advice['status'], 'baseline_unavailable')
+        self.assertIsNone(advice['current_difference_pct'])
+
     def test_predict_trip_keeps_units_and_reports_shap_values(self):
         import xgboost as xgb
 

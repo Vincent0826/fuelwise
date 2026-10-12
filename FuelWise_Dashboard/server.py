@@ -187,7 +187,7 @@ def main():
                     data=trip(int(q['id'][0]));data={**{k:v for k,v in data.items() if k!='raw'},'applicability':evaluate_applicability(data)}
                 elif url.path=='/api/fuel-model':
                     selected=trip(int(q['id'][0]))
-                    try:data=predict_trip(selected,selected['vehicle'],selected['journey'])
+                    try:data=predict_trip(selected,selected['vehicle'],selected['journey'],trips)
                     except ModelUnavailableError as exc:
                         reason=str(exc)
                         if model_build_error:reason+=f'；本機自動訓練失敗：{model_build_error}'

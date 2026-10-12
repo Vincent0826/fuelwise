@@ -287,11 +287,33 @@ p {
   background: #36a879;
   box-shadow: 0 0 0 4px #36a87922;
 }
+.live-voice-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+.live-voice-toggle input {
+  display: inline-block;
+  width: auto;
+  margin: 0;
+  padding: 0;
+}
+.live-voice-status {
+  font-size: 11px;
+}
 .live-eco-alert {
   margin: 0 0 12px;
   border-left-color: #e0a329;
   background: #fff4df;
   color: #76520f;
+  font-weight: 600;
+}
+.live-event-alert {
+  margin: 12px 0 0;
+  border-left-color: #6684a0;
+  background: #eef5fa;
+  color: #344f65;
   font-weight: 600;
 }
 .live-layout {
@@ -325,11 +347,11 @@ p {
 .live-sensors {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 8px;
 }
 .live-sensor {
   min-width: 0;
-  padding: 9px 10px;
+  padding: 7px 9px;
   background: #f2f3f4;
   border: 1px solid var(--line);
 }
@@ -340,21 +362,29 @@ p {
 }
 .live-sensor strong {
   display: block;
-  margin-top: 2px;
-  font-size: 18px;
+  min-width: 0;
+  font-size: 17px;
   font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+}
+.live-sensor-reading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px;
+  min-width: 0;
 }
 .live-sensor small {
+  white-space: nowrap;
   font-size: 11px;
   font-weight: 400;
   color: var(--muted);
 }
 .live-sensor-change {
   display: flex;
-  justify-content: flex-start;
-  gap: 6px;
-  margin-top: 2px;
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  gap: 3px;
   font-size: 10px;
   line-height: 1.2;
 }
@@ -382,21 +412,24 @@ p {
   color: var(--muted);
 }
 .live-ai {
-  margin-top: 24px;
-  padding-top: 18px;
-  border-top: 1px solid var(--line);
+  margin: 0 0 14px;
+  padding: 0 0 14px;
+  border-bottom: 1px solid var(--line);
 }
 .live-ai-heading {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 10px;
+  padding: 0;
 }
 .live-ai-heading h3 {
   margin: 0;
-  font-size: 16px;
+  font-size: 20px;
+  font-weight: 700;
 }
-.live-ai-heading span {
+.live-ai-heading > span {
+  flex: 0 1 auto;
   font-size: 10px;
   text-align: right;
 }
@@ -409,7 +442,7 @@ p {
   gap: 8px;
   max-height: 240px;
   overflow-y: auto;
-  margin: 12px 0;
+  margin: 8px 0;
   padding: 2px;
 }
 .live-ai-message {

@@ -1,0 +1,88 @@
+{
+  "feature_method": "Eligible (applicability rule) completed training trips only; training rows use trips ending strictly before the current start, validation/test and new trips use frozen eligible-training medians.",
+  "strict_completion_rule": "historical.end < current.start",
+  "rule_version": "applicability-v1",
+  "global_training_median_l_per_100km": 18.86792452830448,
+  "training_vehicle_history": {
+    "48XAG6CMA0": {
+      "median_l_per_100km": 15.624999999999408,
+      "completed_training_trip_count": 53
+    },
+    "584LGFL6EX": {
+      "median_l_per_100km": 46.55172413793103,
+      "completed_training_trip_count": 39
+    },
+    "60LBK6GREF": {
+      "median_l_per_100km": 17.647058823529413,
+      "completed_training_trip_count": 71
+    },
+    "AHMPUL0C13": {
+      "median_l_per_100km": 19.642857142857142,
+      "completed_training_trip_count": 62
+    },
+    "ASQBKM1VW6": {
+      "median_l_per_100km": 25.0,
+      "completed_training_trip_count": 144
+    },
+    "B4TLK0X42N": {
+      "median_l_per_100km": 50.0,
+      "completed_training_trip_count": 19
+    },
+    "BYC608ZI24": {
+      "median_l_per_100km": 40.0,
+      "completed_training_trip_count": 1
+    },
+    "C1N6TWBTVB": {
+      "median_l_per_100km": 28.037383177568188,
+      "completed_training_trip_count": 39
+    },
+    "C38ZBDJPHK": {
+      "median_l_per_100km": 14.534883720929615,
+      "completed_training_trip_count": 63
+    },
+    "DLM28P1JMF": {
+      "median_l_per_100km": 20.69918699186992,
+      "completed_training_trip_count": 48
+    },
+    "FOH9N06KXC": {
+      "median_l_per_100km": 13.888888888888188,
+      "completed_training_trip_count": 64
+    },
+    "HTLT0PUOFI": {
+      "median_l_per_100km": 22.36111111111111,
+      "completed_training_trip_count": 64
+    },
+    "M78YOZ58I2": {
+      "median_l_per_100km": 14.705882352940893,
+      "completed_training_trip_count": 86
+    },
+    "SGQ5MOWUGY": {
+      "median_l_per_100km": 13.457556935816994,
+      "completed_training_trip_count": 33
+    },
+    "SROHH1P6DO": {
+      "median_l_per_100km": 12.82051282051282,
+      "completed_training_trip_count": 53
+    },
+    "TPMUFOCRKB": {
+      "median_l_per_100km": 12.75510204081609,
+      "completed_training_trip_count": 23
+    },
+    "V9R0Z0ZLT0": {
+      "median_l_per_100km": 38.63035430988894,
+      "completed_training_trip_count": 26
+    },
+    "XYK9DYX172": {
+      "median_l_per_100km": 15.0,
+      "completed_training_trip_count": 55
+    },
+    "YP6LR2GGM2": {
+      "median_l_per_100km": 39.94082840236686,
+      "completed_training_trip_count": 35
+    },
+    "ZNUKGJO57M": {
+      "median_l_per_100km": 28.54609929078014,
+      "completed_training_trip_count": 35
+    }
+  }
+}

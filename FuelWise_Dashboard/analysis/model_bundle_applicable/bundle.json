@@ -1,0 +1,272 @@
+{
+  "model_method": "applicable_history_xgboost",
+  "model_target": "l_per_100km",
+  "model_file": "model.json",
+  "prediction_tree_count": 117,
+  "feature_names": [
+    "distance_km",
+    "duration_minutes",
+    "speed_mean_kmh",
+    "speed_std_kmh",
+    "rpm_mean",
+    "engine_load_mean_pct",
+    "coolant_temp_mean_c",
+    "idle_engine_share_pct",
+    "speed_abs_change_mean_kmh",
+    "mean_abs_acceleration_m_s2",
+    "kinetic_increase_j_per_kg",
+    "kinetic_increase_j_per_kg_km",
+    "speed_stopped_time_pct",
+    "speed_0_20_time_pct",
+    "speed_20_40_time_pct",
+    "speed_40_60_time_pct",
+    "speed_60_80_time_pct",
+    "speed_80_100_time_pct",
+    "speed_over_100_time_pct",
+    "vehicle_history_median_l_per_100km",
+    "vehicle_history_count",
+    "vehicle_history_fallback"
+  ],
+  "xgboost_version": "3.2.0",
+  "model_role": "experimental_trip_completion_estimate",
+  "rule_version": "applicability-v1",
+  "applicability_config": {
+    "rule_version": "applicability-v1",
+    "min_distance_km": 5.0,
+    "stationary_min_observable_s": 1200,
+    "stationary_ratio_threshold": 0.8,
+    "min_observation_coverage": 0.7,
+    "gap_limit_s": 120,
+    "stationary_event_min_s": 60
+  },
+  "validation_metrics": {
+    "l_per_100km": {
+      "n": 204,
+      "mae": 2.7887430975261007,
+      "rmse": 4.164487109235392,
+      "r2": 0.8349260166890862,
+      "median_absolute_error": 1.8936439916091796,
+      "p90_absolute_error": 6.173805150118742,
+      "equal_weight_vehicle_mae": 3.315053517671896,
+      "per_vehicle": [
+        {
+          "vehicle": "48XAG6CMA0",
+          "sample_count": 13,
+          "mae": 2.2467413826137608
+        },
+        {
+          "vehicle": "584LGFL6EX",
+          "sample_count": 5,
+          "mae": 4.279579208836411
+        },
+        {
+          "vehicle": "60LBK6GREF",
+          "sample_count": 17,
+          "mae": 1.647404483218321
+        },
+        {
+          "vehicle": "AHMPUL0C13",
+          "sample_count": 12,
+          "mae": 1.2243251097250534
+        },
+        {
+          "vehicle": "ASQBKM1VW6",
+          "sample_count": 20,
+          "mae": 3.9233492851257323
+        },
+        {
+          "vehicle": "B4TLK0X42N",
+          "sample_count": 4,
+          "mae": 5.253730092729843
+        },
+        {
+          "vehicle": "C1N6TWBTVB",
+          "sample_count": 6,
+          "mae": 5.5058872328564386
+        },
+        {
+          "vehicle": "C38ZBDJPHK",
+          "sample_count": 18,
+          "mae": 1.8736720843040773
+        },
+        {
+          "vehicle": "DLM28P1JMF",
+          "sample_count": 12,
+          "mae": 1.1851577572123115
+        },
+        {
+          "vehicle": "FOH9N06KXC",
+          "sample_count": 14,
+          "mae": 3.0319152307465047
+        },
+        {
+          "vehicle": "HTLT0PUOFI",
+          "sample_count": 13,
+          "mae": 4.615304996259436
+        },
+        {
+          "vehicle": "M78YOZ58I2",
+          "sample_count": 22,
+          "mae": 1.927316288099688
+        },
+        {
+          "vehicle": "SGQ5MOWUGY",
+          "sample_count": 6,
+          "mae": 1.5052159719723408
+        },
+        {
+          "vehicle": "SROHH1P6DO",
+          "sample_count": 13,
+          "mae": 1.642115532889812
+        },
+        {
+          "vehicle": "TPMUFOCRKB",
+          "sample_count": 1,
+          "mae": 4.87853657662361
+        },
+        {
+          "vehicle": "V9R0Z0ZLT0",
+          "sample_count": 6,
+          "mae": 3.5159425989647075
+        },
+        {
+          "vehicle": "XYK9DYX172",
+          "sample_count": 13,
+          "mae": 2.771287068580111
+        },
+        {
+          "vehicle": "YP6LR2GGM2",
+          "sample_count": 5,
+          "mae": 10.074458189754463
+        },
+        {
+          "vehicle": "ZNUKGJO57M",
+          "sample_count": 4,
+          "mae": 1.8840777452534052
+        }
+      ]
+    }
+  },
+  "comparison_validation_mae_l_per_100km": {
+    "original_A": 3.742138101787495,
+    "new_A": 3.734928130053536,
+    "original_C": 4.211453493948281,
+    "new_C": 2.7887430975261007
+  },
+  "test_follow_up_metrics": {
+    "l_per_100km": {
+      "n": 185,
+      "mae": 2.667752413564161,
+      "rmse": 3.5571797377743795,
+      "r2": 0.8675033685991269,
+      "median_absolute_error": 2.034392984350161,
+      "p90_absolute_error": 5.643089678931924,
+      "equal_weight_vehicle_mae": 2.859905202943446,
+      "per_vehicle": [
+        {
+          "vehicle": "48XAG6CMA0",
+          "sample_count": 19,
+          "mae": 2.6477408087055623
+        },
+        {
+          "vehicle": "584LGFL6EX",
+          "sample_count": 7,
+          "mae": 2.4196479953065193
+        },
+        {
+          "vehicle": "60LBK6GREF",
+          "sample_count": 15,
+          "mae": 2.795143708958487
+        },
+        {
+          "vehicle": "AHMPUL0C13",
+          "sample_count": 20,
+          "mae": 2.070401072735828
+        },
+        {
+          "vehicle": "ASQBKM1VW6",
+          "sample_count": 6,
+          "mae": 3.6932732718331476
+        },
+        {
+          "vehicle": "B4TLK0X42N",
+          "sample_count": 4,
+          "mae": 2.5443115478185527
+        },
+        {
+          "vehicle": "C1N6TWBTVB",
+          "sample_count": 5,
+          "mae": 6.39709430186966
+        },
+        {
+          "vehicle": "C38ZBDJPHK",
+          "sample_count": 5,
+          "mae": 1.7399312535093496
+        },
+        {
+          "vehicle": "DLM28P1JMF",
+          "sample_count": 14,
+          "mae": 1.8994705006989883
+        },
+        {
+          "vehicle": "FOH9N06KXC",
+          "sample_count": 12,
+          "mae": 3.4111680914056826
+        },
+        {
+          "vehicle": "HTLT0PUOFI",
+          "sample_count": 10,
+          "mae": 3.1516010656855635
+        },
+        {
+          "vehicle": "M78YOZ58I2",
+          "sample_count": 18,
+          "mae": 2.1194804407254164
+        },
+        {
+          "vehicle": "SGQ5MOWUGY",
+          "sample_count": 7,
+          "mae": 1.2085165408586058
+        },
+        {
+          "vehicle": "SROHH1P6DO",
+          "sample_count": 12,
+          "mae": 2.9166925552078804
+        },
+        {
+          "vehicle": "TPMUFOCRKB",
+          "sample_count": 5,
+          "mae": 2.4115648475923015
+        },
+        {
+          "vehicle": "V9R0Z0ZLT0",
+          "sample_count": 5,
+          "mae": 2.248157345107002
+        },
+        {
+          "vehicle": "XYK9DYX172",
+          "sample_count": 9,
+          "mae": 2.706700961725723
+        },
+        {
+          "vehicle": "YP6LR2GGM2",
+          "sample_count": 5,
+          "mae": 7.040416049405984
+        },
+        {
+          "vehicle": "ZNUKGJO57M",
+          "sample_count": 7,
+          "mae": 0.9168864967752229
+        }
+      ]
+    }
+  },
+  "selection_reason": "適用範圍篩選後重訓的 C 模型；依相同合格驗證行程的 MAE 優於原 C 而採用，未使用測試結果。",
+  "shap_method": "XGBoost exact TreeSHAP",
+  "shap_background": "Path-dependent",
+  "split_counts": {
+    "train": 1013,
+    "validation": 204,
+    "test": 185
+  }
+}

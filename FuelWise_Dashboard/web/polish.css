@@ -1009,6 +1009,33 @@ main #download:hover {
   background: #fff;
 }
 
+.vehicle-fuel-advice {
+  margin: 14px 0;
+  padding: 16px;
+  border: 1px solid #dce5e6;
+  border-left: 4px solid #00897f;
+  background: #f5f8f8;
+}
+
+.vehicle-fuel-advice.warn {
+  border-color: #e5c885;
+  border-left-color: #d18b16;
+  background: #fff8e9;
+}
+
+.vehicle-fuel-advice .fuel-recommendation-heading strong {
+  font-size: 15px;
+  color: #9e620b;
+}
+
+.vehicle-fuel-advice:not(.warn) .fuel-recommendation-heading strong {
+  color: #547078;
+}
+
+.vehicle-fuel-advice p {
+  margin: 8px 0 0;
+}
+
 .fuel-recommendation-heading {
   display: flex;
   align-items: baseline;
